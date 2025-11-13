@@ -14,7 +14,7 @@ import { LanguageSwitcher } from "@/components/language-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { KeyRound, Mail, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast"
-import { supabaseBrowser, supabaseAdmin } from "@/lib/supabase/supabase" // <<< FIX: Import Admin Client
+import { supabaseBrowser } from "@/lib/supabase/supabase"
 
 export default function ForgotPasswordPage() {
   const { t } = useTranslation()
@@ -143,7 +143,7 @@ export default function ForgotPasswordPage() {
           <Link
             href="/auth/login"
             className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mt-8"
-          >
+  ��       >
             <ArrowLeft className="w-4 h-4" />
             {t("backToLogin")}
           </Link>
