@@ -25,10 +25,32 @@ import {
   Clock,
   Settings,
   Menu
- } from "lucide-react";
+} from "lucide-react";
+// Giả định các hàm này trả về các kiểu đã định nghĩa
 import { getCurrentUser, getUserProfile, signOut, UserRole, getUserRole } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import NotificationBell from "@/components/notifications/NotificationBell";
+
+// --- Định nghĩa kiểu dữ liệu để thay thế 'any' ---
+
+// Kiểu cho đối tượng User (từ getCurrentUser)
+interface CurrentUser {
+  id: string;
+  // FIX: Thêm dấu '?' để làm cho 'email' là optional.
+  // Điều này giải quyết lỗi: 'email' is optional in type 'User' but required in type 'CurrentUser'.
+  email?: string | null; 
+  // Thêm các thuộc tính khác nếu cần
+}
+
+// Kiểu cho đối tượng UserProfile (từ getUserProfile)
+interface UserProfile {
+  first_name: string;
+  last_name: string;
+  avatar_url: string | null;
+  // Thêm các thuộc tính hồ sơ khác
+}
+
+// --- Hết định nghĩa kiểu ---
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -38,8 +60,10 @@ interface DashboardLayoutProps {
 const DashboardLayout = ({ children, role = 'staff' }: DashboardLayoutProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  // FIX 1: Sử dụng kiểu CurrentUser | null
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  // FIX 2: Sử dụng kiểu UserProfile | null
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userRole, setUserRole] = useState<UserRole>(role);
   const [isDark, setIsDark] = useState(false);
 
@@ -51,7 +75,8 @@ const DashboardLayout = ({ children, role = 'staff' }: DashboardLayoutProps) => 
         return;
       }
       
-      setUser(currentUser);
+      setUser(currentUser); // Dòng này giờ đã hợp lệ vì email? khớp với User
+      // Giả sử getUserProfile trả về UserProfile | null
       const userProfile = await getUserProfile(currentUser.id);
       setProfile(userProfile);
       
@@ -64,6 +89,7 @@ const DashboardLayout = ({ children, role = 'staff' }: DashboardLayoutProps) => 
   const handleLogout = async () => {
     const { error } = await signOut();
     if (error) {
+      // Vì error.message được sử dụng, ta có thể giả định error là một đối tượng lỗi
       toast({
         variant: "destructive",
         title: "Logout Failed",
@@ -97,6 +123,7 @@ const DashboardLayout = ({ children, role = 'staff' }: DashboardLayoutProps) => 
     if (profile?.first_name && profile?.last_name) {
       return `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase();
     }
+    // Sử dụng optional chaining và type guard
     return user?.email?.[0]?.toUpperCase() || "U";
   };
 
@@ -125,7 +152,7 @@ const DashboardLayout = ({ children, role = 'staff' }: DashboardLayoutProps) => 
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar>
-                    <AvatarImage src={profile?.avatar_url} />
+                    <AvatarImage src={profile?.avatar_url || undefined} />
                     <AvatarFallback className="gradient-primary text-white">
                       {getInitials()}
                     </AvatarFallback>

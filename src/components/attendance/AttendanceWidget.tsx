@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,76 @@ const AttendanceWidget = () => {
   });
   const [userId, setUserId] = useState<string>("");
 
+  // Hàm tính toán thống kê (được bọc trong useCallback để đảm bảo tính ổn định)
+  const calculateStats = useCallback((records: AttendanceRecord[]) => {
+    // Group by date
+    const dateGroups: { [key: string]: AttendanceRecord[] } = {};
+    records.forEach(record => {
+      const date = record.timestamp.split('T')[0];
+      if (!dateGroups[date]) dateGroups[date] = [];
+      dateGroups[date].push(record);
+    });
+
+    let totalHours = 0;
+    let validDays = 0;
+
+    Object.values(dateGroups).forEach(dayRecords => {
+      // Sort to ensure check_in comes before check_out if needed, though typically only one pair per day matters for total time
+      dayRecords.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      const checkIn = dayRecords.find(r => r.type === 'check_in');
+      const checkOut = dayRecords.find(r => r.type === 'check_out');
+      
+      if (checkIn && checkOut) {
+        const hours = differenceInHours(
+          new Date(checkOut.timestamp),
+          new Date(checkIn.timestamp)
+        );
+        totalHours += hours;
+        validDays++;
+      }
+    });
+
+    setStats({
+      totalHours,
+      totalDays: Object.keys(dateGroups).length,
+      averageHoursPerDay: validDays > 0 ? totalHours / validDays : 0,
+      onTimeRate: 95 // Mock for now
+    });
+  }, []); // Dependencies rỗng vì không phụ thuộc vào state hay props
+
+  // Hàm tải tất cả các bản ghi (được bọc trong useCallback)
+  const loadAllAttendance = useCallback(async (uid: string) => {
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('user_id', uid)
+      .order('timestamp', { ascending: false })
+      .limit(100);
+
+    if (!error && data) {
+      setAllRecords(data);
+      calculateStats(data);
+    }
+  }, [calculateStats]); // Phụ thuộc vào calculateStats
+
+  // Hàm tải bản ghi trong ngày (được bọc trong useCallback)
+  const loadTodayAttendance = useCallback(async (uid: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('user_id', uid)
+      .gte('timestamp', `${today}T00:00:00`)
+      .lte('timestamp', `${today}T23:59:59`)
+      .order('timestamp', { ascending: false });
+
+    if (!error && data) {
+      setTodayRecords(data);
+    }
+  }, []); // Dependencies rỗng
+
+  // Khởi tạo người dùng và tải dữ liệu ban đầu
   useEffect(() => {
     const initUser = async () => {
       const user = await getCurrentUser();
@@ -49,8 +119,9 @@ const AttendanceWidget = () => {
       }
     };
     initUser();
-  }, []);
+  }, [loadTodayAttendance, loadAllAttendance]); // FIX: Thêm dependencies để giải quyết cảnh báo
 
+  // Thiết lập Realtime Subscription
   useEffect(() => {
     if (!userId) return;
 
@@ -76,70 +147,7 @@ const AttendanceWidget = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId]);
-
-  const loadTodayAttendance = async (uid: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    const { data, error } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('user_id', uid)
-      .gte('timestamp', `${today}T00:00:00`)
-      .lte('timestamp', `${today}T23:59:59`)
-      .order('timestamp', { ascending: false });
-
-    if (!error && data) {
-      setTodayRecords(data);
-    }
-  };
-
-  const loadAllAttendance = async (uid: string) => {
-    const { data, error } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('user_id', uid)
-      .order('timestamp', { ascending: false })
-      .limit(100);
-
-    if (!error && data) {
-      setAllRecords(data);
-      calculateStats(data);
-    }
-  };
-
-  const calculateStats = (records: AttendanceRecord[]) => {
-    // Group by date
-    const dateGroups: { [key: string]: AttendanceRecord[] } = {};
-    records.forEach(record => {
-      const date = record.timestamp.split('T')[0];
-      if (!dateGroups[date]) dateGroups[date] = [];
-      dateGroups[date].push(record);
-    });
-
-    let totalHours = 0;
-    let validDays = 0;
-
-    Object.values(dateGroups).forEach(dayRecords => {
-      const checkIn = dayRecords.find(r => r.type === 'check_in');
-      const checkOut = dayRecords.find(r => r.type === 'check_out');
-      
-      if (checkIn && checkOut) {
-        const hours = differenceInHours(
-          new Date(checkOut.timestamp),
-          new Date(checkIn.timestamp)
-        );
-        totalHours += hours;
-        validDays++;
-      }
-    });
-
-    setStats({
-      totalHours,
-      totalDays: Object.keys(dateGroups).length,
-      averageHoursPerDay: validDays > 0 ? totalHours / validDays : 0,
-      onTimeRate: 95 // Mock for now
-    });
-  };
+  }, [userId, loadTodayAttendance, loadAllAttendance]); // FIX: Thêm dependencies để giải quyết cảnh báo
 
   const handleCheckIn = async () => {
     if (!userId) return;
@@ -163,11 +171,18 @@ const AttendanceWidget = () => {
         title: "Checked In Successfully",
         description: `Welcome! Checked in at ${format(new Date(), 'HH:mm')}`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) { // FIX: Thay any bằng unknown
+      let errorMessage = "Check-in failed due to an unknown error.";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null && 'message' in error) {
+          errorMessage = (error as { message: string }).message;
+      }
+
       toast({
         variant: "destructive",
         title: "Check-in Failed",
-        description: error.message
+        description: errorMessage
       });
     } finally {
       setIsLoading(false);
@@ -208,11 +223,18 @@ const AttendanceWidget = () => {
           description: `See you tomorrow!`,
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) { // FIX: Thay any bằng unknown
+      let errorMessage = "Check-out failed due to an unknown error.";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null && 'message' in error) {
+          errorMessage = (error as { message: string }).message;
+      }
+
       toast({
         variant: "destructive",
         title: "Check-out Failed",
-        description: error.message
+        description: errorMessage
       });
     } finally {
       setIsLoading(false);
