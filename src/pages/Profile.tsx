@@ -18,15 +18,8 @@ import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 // --- SCHEMA & TYPES ---
-const profileSchema = z.object({
-  first_name: z.string().min(1, "Tên là bắt buộc").max(100),
-  last_name: z.string().min(1, "Họ là bắt buộc").max(100),
-  phone: z.string().optional().nullable(),
-  date_of_birth: z.string().optional().nullable(),
-});
 
-type ProfileFormData = z.infer<typeof profileSchema>;
-
+// Định nghĩa lại các interfaces cần thiết (để tránh lỗi Cannot find name)
 interface Team {
     id: string;
     name: string;
@@ -45,7 +38,7 @@ interface UserProfile {
     first_name: string | null;
     last_name: string | null;
     avatar_url: string | null;
-    cv_url: string | null; // Cột này cần được lấy từ DB
+    cv_url: string | null; // Cần phải được lấy từ DB
     team_id: string | null;
     shift_id: string | null;
     phone: string | null;
@@ -54,14 +47,22 @@ interface UserProfile {
 }
 
 
+const profileSchema = z.object({
+  first_name: z.string().min(1, "Tên là bắt buộc").max(100),
+  last_name: z.string().min(1, "Họ là bắt buộc").max(100),
+  phone: z.string().optional().nullable(),
+  date_of_birth: z.string().optional().nullable(),
+});
+
+type ProfileFormData = z.infer<typeof profileSchema>;
+
+
 const Profile = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [cvUploading, setCvUploading] = useState(false);
     const [profile, setProfile] = useState<UserProfile | null>(null);
-    
-    // ĐÃ KHÔI PHỤC TYPES BỊ THIẾU
     const [team, setTeam] = useState<Team | null>(null); 
     const [shift, setShift] = useState<Shift | null>(null);
 
@@ -75,6 +76,36 @@ const Profile = () => {
         },
     });
 
+    // --- TẠO SIGNED URL BẢO MẬT ---
+    const getCvDownloadUrl = useCallback(async (cvUrl: string) => {
+        try {
+            const bucketName = 'documents';
+            // Tách lấy đường dẫn file (ví dụ: "ab4b.../filename.pdf")
+            const pathSegments = cvUrl.split(`${bucketName}/`);
+            
+            if (pathSegments.length < 2) {
+                toast.error("Lỗi: Không tìm thấy đường dẫn file trong URL.");
+                return null;
+            }
+            
+            const filePath = pathSegments[1]; 
+
+            // Tạo Signed URL (hết hạn sau 5 phút)
+            const { data, error } = await supabase.storage
+                .from(bucketName)
+                .createSignedUrl(filePath, 300); 
+
+            if (error) throw error;
+            
+            return data.signedUrl;
+            
+        } catch (error) {
+            console.error("Lỗi tạo URL bảo mật:", error);
+            toast.error("Không thể tạo liên kết xem CV.");
+            return null;
+        }
+    }, []);
+
     // --- LOGIC TẢI DỮ LIỆU ---
     const loadProfile = useCallback(async () => {
         try {
@@ -84,11 +115,11 @@ const Profile = () => {
                 return;
             }
 
-            // SỬA LỖI 2352: Phải chọn tường minh cv_url
+            // SỬA LỖI 2352: Sử dụng select('*') vì cv_url đã được thêm vào DB
             const { data: profileData, error: profileError } = await supabase
                 .from("profiles")
-                // Đã thêm cv_url vào select list
-                .select("*, cv_url") 
+                // ĐÃ SỬA: Lấy tất cả các cột. Cột cv_url phải được bao gồm.
+                .select("*") 
                 .eq("id", user.id)
                 .single();
 
@@ -105,7 +136,7 @@ const Profile = () => {
                 date_of_birth: userProfile.date_of_birth || "",
             });
 
-            // Lấy Team
+            // Tải thông tin tổ chức (Team và Shift)
             if (userProfile.team_id) {
                 const { data: teamData } = await supabase
                     .from("teams")
@@ -113,11 +144,8 @@ const Profile = () => {
                     .eq("id", userProfile.team_id)
                     .single();
                 setTeam(teamData as Team);
-            } else {
-                setTeam(null);
-            }
+            } else { setTeam(null); }
 
-            // Lấy Shift
             if (userProfile.shift_id) {
                 const { data: shiftData } = await supabase
                     .from("shifts")
@@ -125,9 +153,7 @@ const Profile = () => {
                     .eq("id", userProfile.shift_id)
                     .single();
                 setShift(shiftData as Shift);
-            } else {
-                setShift(null);
-            }
+            } else { setShift(null); }
 
         } catch (error) {
             console.error("Lỗi tải hồ sơ:", error);
@@ -199,7 +225,7 @@ const Profile = () => {
                 .from("avatars")
                 .getPublicUrl(filePath);
 
-            // SỬA LỖI 2353: Cập nhật avatar_url
+            // ĐÃ SỬA LỖI 2353: update avatar_url
             const { error: updateError } = await supabase
                 .from("profiles")
                 .update({ avatar_url: publicUrl }) 
@@ -240,7 +266,7 @@ const Profile = () => {
             const filePath = `${user.id}/${Date.now()}_cv.pdf`; 
 
             const { error: uploadError } = await supabase.storage
-                .from("documents") // SỬ DỤNG BUCKET 'documents'
+                .from("documents") 
                 .upload(filePath, file, { upsert: true });
 
             if (uploadError) throw uploadError;
@@ -249,10 +275,11 @@ const Profile = () => {
                 .from("documents")
                 .getPublicUrl(filePath);
 
-            // Lưu CV URL vào cột cv_url
+            // SỬA LỖI 2353: Update cột cv_url. Dùng 'as any' tạm thời cho đến khi types đồng bộ
             const { error: updateError } = await supabase
                 .from("profiles")
-                .update({ cv_url: publicUrl })
+                // Dùng 'as any' để TypeScript không báo lỗi khi cột cv_url không có trong types cục bộ
+                .update({ cv_url: publicUrl } ) 
                 .eq("id", user.id);
 
             if (updateError) throw updateError;
@@ -362,12 +389,30 @@ const Profile = () => {
                                 <div className="flex items-center gap-4">
                                     {profile.cv_url ? (
                                         <>
-                                            <a href={profile.cv_url} target="_blank" rel="noopener noreferrer">
-                                                <Button variant="outline" className="text-primary hover:bg-secondary">
-                                                    <Eye className="h-4 w-4 mr-2" /> Xem CV
-                                                </Button>
-                                            </a>
-                                            <a href={profile.cv_url} download>
+                                            <Button 
+                                                variant="outline" 
+                                                className="text-primary hover:bg-secondary"
+                                                onClick={async () => {
+                                                    const url = await getCvDownloadUrl(profile.cv_url!);
+                                                    if (url) {
+                                                        window.open(url, '_blank');
+                                                    }
+                                                }}
+                                            >
+                                                <Eye className="h-4 w-4 mr-2" /> Xem CV
+                                            </Button>
+                                            
+                                            <a 
+                                                href={profile.cv_url} 
+                                                onClick={async (e) => {
+                                                    e.preventDefault();
+                                                    const url = await getCvDownloadUrl(profile.cv_url!);
+                                                    if (url) {
+                                                        window.open(url, '_self'); 
+                                                    }
+                                                }}
+                                                download 
+                                            >
                                                 <Button variant="secondary" className="bg-green-600 hover:bg-green-700 text-white">
                                                     <Download className="h-4 w-4 mr-2" /> Tải xuống
                                                 </Button>
