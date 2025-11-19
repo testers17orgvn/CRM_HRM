@@ -30,7 +30,7 @@ const Organization = () => {
   loadRole();
  }, []); // Chạy chỉ một lần sau khi render ban đầu
 
- // Kiểm tra xem người dùng có ph��i là admin không
+ // Kiểm tra xem người dùng có phải là admin không
  if (role !== 'admin') {
   return (
    // Hiển thị layout Dashboard
@@ -45,12 +45,12 @@ const Organization = () => {
 
   return (
     <DashboardLayout role={role}>
-      <div className="space-y-6 animate-fade-in pb-20 md:pb-6">
+      <div className="space-y-4 md:space-y-6 animate-fade-in pb-20 md:pb-6">
         <div className="mb-2">
-          <h1 className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
+          <h1 className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent text-2xl md:text-3xl lg:text-4xl">
             Quản Lý Tổ Chức
           </h1>
-          <p className="text-muted-foreground mt-2">Quản lý đội nhóm, người dùng, ca làm, chấm công và lương</p>
+          <p className="text-muted-foreground mt-1 md:mt-2 text-sm md:text-base">Quản lý đội nhóm, người dùng, ca làm, chấm công và lương</p>
         </div>
 
         <Tabs defaultValue="teams" className="w-full">
