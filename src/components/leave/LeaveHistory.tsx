@@ -1,187 +1,224 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getCurrentUser } from "@/lib/auth";
-import { UserRole } from "@/lib/auth";
+import { getCurrentUser, UserRole } from "@/lib/auth";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { SkeletonTable } from "@/components/ui/skeleton-table";
+import { Tables } from "@/integrations/supabase/types";
+import { Check, X } from "lucide-react"; 
 
+// --- INTERFACES CHÍNH XÁC ---
+interface UserProfileData {
+    first_name: string | null;
+    last_name: string | null;
+}
+type LeaveRequestBase = Tables<'leave_requests'>;
+
+interface LeaveRequest extends LeaveRequestBase {
+    profiles: UserProfileData | null; 
+}
+// --- END INTERFACES ---
+
+
+// Component hiển thị lịch sử yêu cầu nghỉ phép
 const LeaveHistory = ({ role }: { role: UserRole }) => {
-  const [leaves, setLeaves] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
+    const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { toast } = useToast();
 
-  const fetchLeaves = async () => {
-    try {
-      const user = await getCurrentUser();
-      if (!user) return;
-
-      let query = supabase
-        .from('leave_requests')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (role === 'staff') {
-        query = query.eq('user_id', user.id);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setLeaves(data || []);
-    } catch (error) {
-      console.error('Error fetching leaves:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLeaves();
-
-    const channel = supabase
-      .channel('leaves-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
-        fetchLeaves();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+    // Hàm lấy Tên đầy đủ
+    const getFullName = (profile: UserProfileData | null, userId: string) => {
+        const name = `${profile?.last_name || ''} ${profile?.first_name || ''}`.trim();
+        return name || `ID: ${userId.substring(0, 8)}...`;
     };
-  }, [role]);
 
-  const handleApprove = async (leaveId: string) => {
-    try {
-      const user = await getCurrentUser();
-      if (!user) return;
+    // --- LOGIC TẢI DỮ LIỆU ---
+    const fetchLeaves = useCallback(async () => {
+        try {
+            const user = await getCurrentUser();
+            if (!user) return;
 
-      const { error } = await supabase
-        .from('leave_requests')
-        .update({
-          status: 'approved',
-          approved_by: user.id,
-          approved_at: new Date().toISOString()
-        })
-        .eq('id', leaveId);
+            let query = supabase
+                .from('leave_requests')
+                // FIX LỖI 400: Đã giữ cú pháp JOIN để lấy tên người dùng
+                .select(`
+                    *,
+                    profiles!leave_requests_user_id_fkey (first_name, last_name)
+                `)
+                .order('created_at', { ascending: false });
 
-      if (error) throw error;
+            if (role === 'staff') {
+                query = query.eq('user_id', user.id);
+            }
 
-      toast({
-        title: "Success",
-        description: "Leave request approved"
-      });
-    } catch (error) {
-      console.error('Error approving leave:', error);
-      toast({
-        title: "Error",
-        description: "Failed to approve leave",
-        variant: "destructive"
-      });
+            const { data, error } = await query;
+            if (error) throw error;
+            
+            // Ép kiểu mạnh mẽ qua 'unknown'
+            setLeaves((data as unknown as LeaveRequest[]) || []);
+        } catch (error) {
+            console.error('Lỗi khi lấy dữ liệu nghỉ phép:', error);
+            toast({ title: "Lỗi", description: "Không thể tải lịch sử nghỉ phép.", variant: "destructive" });
+        } finally {
+            setLoading(false);
+        }
+    }, [role, toast]); 
+
+    useEffect(() => {
+        fetchLeaves();
+
+        const channel = supabase
+            .channel('leaves-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+                fetchLeaves();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [fetchLeaves]); 
+
+    // Xử lý phê duyệt yêu cầu nghỉ phép
+    const handleApprove = async (leaveId: string) => {
+        try {
+            const user = await getCurrentUser();
+            if (!user) return;
+
+            const updatePayload: Partial<LeaveRequestBase> = {
+                status: 'approved', 
+                approved_by: user.id,
+                approved_at: new Date().toISOString()
+            };
+
+            const { error } = await supabase
+                .from('leave_requests')
+                .update(updatePayload)
+                .eq('id', leaveId);
+
+            if (error) throw error;
+
+            toast({ title: "Thành công", description: "Yêu cầu nghỉ phép đã được phê duyệt" });
+        } catch (error) {
+            console.error('Lỗi khi phê duyệt:', error);
+            toast({ title: "Lỗi", description: "Không thể phê duyệt yêu cầu nghỉ phép", variant: "destructive" });
+        }
+    };
+
+    // Xử lý từ chối yêu cầu nghỉ phép
+    const handleReject = async (leaveId: string) => {
+        try {
+            const user = await getCurrentUser();
+            if (!user) return;
+
+            const updatePayload: Partial<LeaveRequestBase> = {
+                status: 'rejected', 
+                approved_by: user.id,
+                approved_at: new Date().toISOString()
+            };
+
+            const { error } = await supabase
+                .from('leave_requests')
+                .update(updatePayload)
+                .eq('id', leaveId);
+
+            if (error) throw error;
+
+            toast({ title: "Thành công", description: "Yêu cầu nghỉ phép đã bị từ chối" });
+        } catch (error) {
+            console.error('Lỗi khi từ chối:', error);
+            toast({ title: "Lỗi", description: "Không thể từ chối yêu cầu nghỉ phép", variant: "destructive" });
+        }
+    };
+
+    // Hiển thị Skeleton khi đang tải dữ liệu
+    if (loading) {
+        return <SkeletonTable rows={6} columns={role === 'leader' || role === 'admin' ? 7 : 5} />;
     }
-  };
 
-  const handleReject = async (leaveId: string) => {
-    try {
-      const user = await getCurrentUser();
-      if (!user) return;
-
-      const { error } = await supabase
-        .from('leave_requests')
-        .update({
-          status: 'rejected',
-          approved_by: user.id,
-          approved_at: new Date().toISOString()
-        })
-        .eq('id', leaveId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Leave request rejected"
-      });
-    } catch (error) {
-      console.error('Error rejecting leave:', error);
-      toast({
-        title: "Error",
-        description: "Failed to reject leave",
-        variant: "destructive"
-      });
-    }
-  };
-
-  if (loading) {
-    return <SkeletonTable rows={6} columns={role === 'leader' || role === 'admin' ? 7 : 5} />;
-  }
-
-  return (
-    <div className="border rounded-lg">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {(role === 'leader' || role === 'admin') && <TableHead>Employee</TableHead>}
-            <TableHead>Type</TableHead>
-            <TableHead>Start Date</TableHead>
-            <TableHead>End Date</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Submitted</TableHead>
-            {(role === 'leader' || role === 'admin') && <TableHead>Actions</TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {leaves.map((leave) => (
-            <TableRow key={leave.id}>
-              {(role === 'leader' || role === 'admin') && (
-                <TableCell>
-                  User {leave.user_id?.substring(0, 8)}
-                </TableCell>
-              )}
-              <TableCell className="capitalize">{leave.type.replace('_', ' ')}</TableCell>
-              <TableCell>{format(new Date(leave.start_date), 'MMM dd, yyyy')}</TableCell>
-              <TableCell>{format(new Date(leave.end_date), 'MMM dd, yyyy')}</TableCell>
-              <TableCell>
-                <Badge
-                  variant={
-                    leave.status === 'approved' ? 'default' :
-                    leave.status === 'rejected' ? 'destructive' : 'secondary'
-                  }
-                >
-                  {leave.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {format(new Date(leave.created_at), 'MMM dd, yyyy')}
-              </TableCell>
-              {(role === 'leader' || role === 'admin') && (
-                <TableCell>
-                  {leave.status === 'pending' && (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleApprove(leave.id)}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleReject(leave.id)}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  )}
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
+    // Render bảng hiển thị lịch sử nghỉ phép
+    return (
+        <div className="border rounded-lg shadow-lg">
+            <Table>
+                <TableHeader className="bg-muted/50">
+                    <TableRow>
+                        {(role === 'leader' || role === 'admin') && <TableHead>Nhân viên</TableHead>}
+                        <TableHead>Loại</TableHead>
+                        <TableHead>Ngày Bắt đầu</TableHead>
+                        <TableHead>Ngày Kết thúc</TableHead>
+                        <TableHead>Trạng thái</TableHead>
+                        <TableHead>Gửi lúc</TableHead>
+                        {(role === 'leader' || role === 'admin') && <TableHead className="text-right">Hành động</TableHead>}
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {leaves.length === 0 ? (
+                        <TableRow>
+                            <TableCell colSpan={role === 'leader' || role === 'admin' ? 7 : 5} className="text-center text-muted-foreground py-8">
+                                Không tìm thấy yêu cầu nghỉ phép nào.
+                            </TableCell>
+                        </TableRow>
+                    ) : 
+                        leaves.map((leave) => (
+                            <TableRow key={leave.id}>
+                                {/* Cột Nhân viên (Chỉ hiển thị cho Leader/Admin) */}
+                                {(role === 'leader' || role === 'admin') && (
+                                    <TableCell className="font-medium">
+                                        {getFullName(leave.profiles, leave.user_id)}
+                                    </TableCell>
+                                )}
+                                
+                                {/* Các cột khác */}
+                                <TableCell className="capitalize font-medium">{leave.type.replace('_', ' ')}</TableCell>
+                                <TableCell>{format(new Date(leave.start_date), 'dd/MM/yyyy')}</TableCell>
+                                <TableCell>{format(new Date(leave.end_date), 'dd/MM/yyyy')}</TableCell>
+                                
+                                {/* Trạng thái */}
+                                <TableCell>
+                                    <Badge
+                                        variant={
+                                            leave.status === 'approved' ? 'default' :
+                                            leave.status === 'rejected' ? 'destructive' : 'secondary'
+                                        }
+                                    >
+                                        {leave.status}
+                                    </Badge>
+                                </TableCell>
+                                
+                                <TableCell className="text-muted-foreground text-sm">
+                                    {format(new Date(leave.created_at), 'dd/MM/yyyy')}
+                                </TableCell>
+                                
+                                {/* Cột Hành động (Chỉ hiển thị cho Leader/Admin) */}
+                                {(role === 'leader' || role === 'admin') && (
+                                    <TableCell className="text-right">
+                                        {leave.status === 'pending' && (
+                                            <div className="flex gap-2 justify-end">
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => handleApprove(leave.id)}
+                                                >
+                                                    <Check className="w-4 h-4 mr-1" /> Phê duyệt
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="destructive"
+                                                    onClick={() => handleReject(leave.id)}
+                                                >
+                                                    <X className="w-4 h-4 mr-1" /> Từ chối
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </TableCell>
+                                )}
+                            </TableRow>
+                        ))}
+                </TableBody>
+            </Table>
+        </div>
+    );
 };
-
 export default LeaveHistory;

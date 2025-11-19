@@ -86,7 +86,7 @@ const SalaryStatistics = () => {
       if (error) throw error;
 
       // Sửa lỗi: Ép kiểu dữ liệu an toàn hơn, không dùng 'as any'
-      const fetchedData = (data || []) as SalaryData[];
+      const fetchedData = (data || []) as unknown as SalaryData[];
       
       setSalaryData(fetchedData);
       processMonthlyTrends(fetchedData);

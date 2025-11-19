@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, DollarSign, TrendingUp, Clock, Download, FileSpreadsheet } from "lucide-react";
+import { Plus, DollarSign, TrendingUp, Clock, Download, FileSpreadsheet, Hourglass } from "lucide-react";
 import { format } from "date-fns";
 import { SkeletonTable } from "@/components/ui/skeleton-table";
 import { SkeletonStatCard } from "@/components/ui/skeleton-card";
 import * as XLSX from 'xlsx';
 
+// --- INTERFACES ---
 interface Salary {
   id: string;
   user_id: string;
@@ -35,10 +36,18 @@ interface Profile {
   email: string;
 }
 
+interface AttendanceRecord {
+    user_id: string;
+    timestamp: string;
+    type: 'check_in' | 'check_out'; 
+    location: string | null;
+    notes: string | null;
+}
+
 const SalaryManagement = () => {
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [attendanceData, setAttendanceData] = useState<any[]>([]);
+  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]); // Đã fix kiểu dữ liệu
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState("");
@@ -52,11 +61,13 @@ const SalaryManagement = () => {
     notes: ""
   });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const getUserName = (userId: string) => {
+    const profile = profiles.find(p => p.id === userId);
+    return profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() : 'Không rõ';
+  };
+  
+  // KHẮC PHỤC LỖI 57: Đóng gói fetchData bằng useCallback
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -78,25 +89,31 @@ const SalaryManagement = () => {
       // Fetch attendance data for hours calculation
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance')
-        .select('user_id, timestamp, type')
-        .order('timestamp', { ascending: false });
+        .select('user_id, timestamp, type, location, notes'); // Đã chọn các cột cần thiết
 
       if (attendanceError) throw attendanceError;
-
-      setSalaries(salaryData || []);
-      setProfiles(profileData || []);
-      setAttendanceData(attendanceData || []);
-    } catch (error: any) {
+      
+      // KHẮC PHỤC LỖI any (Đã ép kiểu an toàn)
+      setSalaries(salaryData as Salary[] || []);
+      setProfiles(profileData as Profile[] || []);
+      setAttendanceData(attendanceData as AttendanceRecord[] || []); 
+      
+    } catch (error) {
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Lỗi Tải Dữ liệu",
+        description: (error as Error).message, // Đã fix lỗi 'any'
         variant: "destructive"
       });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]); 
+
+  // Hàm tính giờ làm (Đã fix lỗi 'any')
   const calculateHoursWorked = (userId: string, month: string) => {
     const monthStart = new Date(month + '-01');
     const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
@@ -106,8 +123,7 @@ const SalaryManagement = () => {
       return a.user_id === userId && date >= monthStart && date <= monthEnd;
     });
 
-    // Group by date and calculate hours
-    const dateGroups: { [key: string]: any[] } = {};
+    const dateGroups: { [key: string]: AttendanceRecord[] } = {};
     userAttendance.forEach(record => {
       const date = record.timestamp.split('T')[0];
       if (!dateGroups[date]) dateGroups[date] = [];
@@ -127,14 +143,14 @@ const SalaryManagement = () => {
 
     return Math.round(totalHours * 100) / 100;
   };
-
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedUser || !selectedMonth) {
+    if (!selectedUser || !selectedMonth || !formData.base_salary) {
       toast({
-        title: "Error",
-        description: "Please select a user and month",
+        title: "Lỗi",
+        description: "Vui lòng chọn nhân viên, tháng và nhập lương cơ bản.",
         variant: "destructive"
       });
       return;
@@ -153,79 +169,98 @@ const SalaryManagement = () => {
           deductions: parseFloat(formData.deductions),
           hours_worked: hoursWorked,
           notes: formData.notes || null
-        });
+        } as Salary); // Ép kiểu dữ liệu an toàn khi upsert
 
       if (error) throw error;
 
       toast({
-        title: "Success",
-        description: "Salary record saved successfully"
+        title: "Thành công",
+        description: "Bản ghi lương đã được lưu/cập nhật.",
       });
 
       setIsDialogOpen(false);
       setFormData({ base_salary: "", bonus: "0", deductions: "0", notes: "" });
       fetchData();
-    } catch (error: any) {
+    } catch (error) {
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Lỗi Lưu Trữ",
+        description: (error as Error).message, // Đã fix lỗi 'any'
         variant: "destructive"
       });
     }
   };
 
-  const getUserName = (userId: string) => {
-    const profile = profiles.find(p => p.id === userId);
-    return profile ? `${profile.first_name} ${profile.last_name}` : 'Unknown';
-  };
-
+  // Hàm xuất file Excel (Đã fix lỗi 'any')
   const exportToExcel = (type: 'salary' | 'attendance') => {
     if (type === 'salary') {
-      // Prepare salary data for export
       const exportData = salaries.map(salary => ({
-        'Employee': getUserName(salary.user_id),
+        'Nhân viên': getUserName(salary.user_id),
         'Email': profiles.find(p => p.id === salary.user_id)?.email || '',
-        'Month': format(new Date(salary.month), 'MMM yyyy'),
-        'Base Salary': Number(salary.base_salary).toFixed(2),
-        'Bonus': Number(salary.bonus).toFixed(2),
-        'Deductions': Number(salary.deductions).toFixed(2),
-        'Total Salary': Number(salary.total_salary).toFixed(2),
-        'Hours Worked': Number(salary.hours_worked).toFixed(2),
-        'Notes': salary.notes || '',
-        'Created At': format(new Date(salary.created_at), 'yyyy-MM-dd HH:mm')
+        'Tháng': format(new Date(salary.month), 'MMM yyyy'),
+        'Lương Cơ bản (VND)': Number(salary.base_salary).toFixed(2),
+        'Thưởng (VND)': Number(salary.bonus).toFixed(2),
+        'Khấu trừ (VND)': Number(salary.deductions).toFixed(2),
+        'Tổng lương (VND)': Number(salary.total_salary).toFixed(2),
+        'Giờ làm việc (h)': Number(salary.hours_worked).toFixed(2),
+        'Ghi chú': salary.notes || '',
+        'Ngày tạo': format(new Date(salary.created_at), 'yyyy-MM-dd HH:mm')
       }));
 
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Salary Records");
+      XLSX.utils.book_append_sheet(wb, ws, "Bản ghi Lương");
       
-      // Auto-size columns
-      const maxWidth = exportData.reduce((w, r) => Math.max(w, r.Employee.length), 10);
+      const maxWidth = exportData.reduce((w, r) => Math.max(w, r['Nhân viên'].length), 10);
       ws['!cols'] = [
-        { wch: maxWidth },
-        { wch: 25 },
-        { wch: 12 },
-        { wch: 12 },
-        { wch: 10 },
-        { wch: 12 },
-        { wch: 12 },
-        { wch: 12 },
-        { wch: 30 },
-        { wch: 18 }
+        { wch: maxWidth }, { wch: 25 }, { wch: 12 }, { wch: 15 }, 
+        { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 30 }, { wch: 18 }
       ];
 
-      XLSX.writeFile(wb, `Salary_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+      XLSX.writeFile(wb, `BaoCao_Luong_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
       
-      toast({
-        title: "Export Successful",
-        description: "Salary data exported to Excel"
-      });
+      toast({ title: "Xuất file thành công", description: "Dữ liệu lương đã được xuất ra Excel" });
     } else {
-      // Export attendance data
-      exportAttendanceData();
+      exportAttendanceData(); // Gọi hàm export Attendance
     }
   };
 
+  const exportAttendanceData = async () => {
+    try {
+        const { data: allAttendance, error } = await supabase
+            .from('attendance')
+            .select('*')
+            .order('timestamp', { ascending: false })
+            .limit(1000);
+
+        if (error) throw error;
+
+        const exportData = allAttendance?.map((record: AttendanceRecord) => ({ // Đã fix lỗi 'any'
+            'Nhân viên': getUserName(record.user_id),
+            'Email': profiles.find(p => p.id === record.user_id)?.email || '',
+            'Loại': record.type === 'check_in' ? 'Check In' : 'Check Out',
+            'Ngày': format(new Date(record.timestamp), 'yyyy-MM-dd'),
+            'Giờ': format(new Date(record.timestamp), 'HH:mm:ss'),
+            'Vị trí': record.location || 'N/A',
+            'Ghi chú': record.notes || ''
+        })) || [];
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Bản ghi Chấm công");
+        
+        ws['!cols'] = [
+            { wch: 20 }, { wch: 25 }, { wch: 12 }, { wch: 12 }, 
+            { wch: 10 }, { wch: 25 }, { wch: 30 }
+        ];
+
+        XLSX.writeFile(wb, `BaoCao_ChamCong_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+
+        toast({ title: "Xuất file thành công", description: "Dữ liệu chấm công đã được xuất ra Excel" });
+    } catch (error) {
+        toast({ title: "Xuất file thất bại", description: (error as Error).message, variant: "destructive" });
+    }
+  };
+  
   const exportToCSV = (type: 'salary' | 'attendance') => {
     if (type === 'salary') {
       const exportData = salaries.map(salary => ({
@@ -246,114 +281,64 @@ const SalaryManagement = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Salary_Report_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+      link.download = `BaoCao_Luong_${format(new Date(), 'yyyy-MM-dd')}.csv`;
       link.click();
       URL.revokeObjectURL(url);
 
-      toast({
-        title: "Export Successful",
-        description: "Salary data exported to CSV"
-      });
+      toast({ title: "Xuất file thành công", description: "Dữ liệu lương đã được xuất ra CSV" });
     } else {
       exportAttendanceDataCSV();
     }
   };
 
-  const exportAttendanceData = async () => {
-    try {
-      const { data: allAttendance, error } = await supabase
-        .from('attendance')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(1000);
-
-      if (error) throw error;
-
-      const exportData = allAttendance?.map(record => ({
-        'Employee': getUserName(record.user_id),
-        'Email': profiles.find(p => p.id === record.user_id)?.email || '',
-        'Type': record.type === 'check_in' ? 'Check In' : 'Check Out',
-        'Date': format(new Date(record.timestamp), 'yyyy-MM-dd'),
-        'Time': format(new Date(record.timestamp), 'HH:mm:ss'),
-        'Location': record.location || 'N/A',
-        'Notes': record.notes || ''
-      })) || [];
-
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Attendance Records");
-      
-      ws['!cols'] = [
-        { wch: 20 },
-        { wch: 25 },
-        { wch: 12 },
-        { wch: 12 },
-        { wch: 10 },
-        { wch: 25 },
-        { wch: 30 }
-      ];
-
-      XLSX.writeFile(wb, `Attendance_Report_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
-
-      toast({
-        title: "Export Successful",
-        description: "Attendance data exported to Excel"
-      });
-    } catch (error: any) {
-      toast({
-        title: "Export Failed",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  };
-
   const exportAttendanceDataCSV = async () => {
     try {
-      const { data: allAttendance, error } = await supabase
-        .from('attendance')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(1000);
+        const { data: allAttendance, error } = await supabase
+            .from('attendance')
+            .select('*')
+            .order('timestamp', { ascending: false })
+            .limit(1000);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      const exportData = allAttendance?.map(record => ({
-        'Employee': getUserName(record.user_id),
-        'Email': profiles.find(p => p.id === record.user_id)?.email || '',
-        'Type': record.type === 'check_in' ? 'Check In' : 'Check Out',
-        'Date': format(new Date(record.timestamp), 'yyyy-MM-dd'),
-        'Time': format(new Date(record.timestamp), 'HH:mm:ss'),
-        'Location': record.location || 'N/A',
-        'Notes': record.notes || ''
-      })) || [];
+        const exportData = allAttendance?.map((record: AttendanceRecord) => ({ // Đã fix lỗi 'any'
+            'Employee': getUserName(record.user_id),
+            'Email': profiles.find(p => p.id === record.user_id)?.email || '',
+            'Type': record.type === 'check_in' ? 'Check In' : 'Check Out',
+            'Date': format(new Date(record.timestamp), 'yyyy-MM-dd'),
+            'Time': format(new Date(record.timestamp), 'HH:mm:ss'),
+            'Location': record.location || 'N/A',
+            'Notes': record.notes || ''
+        })) || [];
 
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const csv = XLSX.utils.sheet_to_csv(ws);
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Attendance_Report_${format(new Date(), 'yyyy-MM-dd')}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `BaoCao_ChamCong_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
 
-      toast({
-        title: "Export Successful",
-        description: "Attendance data exported to CSV"
-      });
-    } catch (error: any) {
-      toast({
-        title: "Export Failed",
-        description: error.message,
-        variant: "destructive"
-      });
+        toast({ title: "Xuất file thành công", description: "Dữ liệu chấm công đã được xuất ra CSV" });
+    } catch (error) {
+        toast({ title: "Xuất file thất bại", description: (error as Error).message, variant: "destructive" });
     }
   };
 
+
+  // KHẮC PHỤC LỖI 368, 379, 390: Tính toán Stats trước khi return
   const totalPayout = salaries.reduce((sum, s) => sum + Number(s.total_salary), 0);
   const totalBonus = salaries.reduce((sum, s) => sum + Number(s.bonus), 0);
   const totalHours = salaries.reduce((sum, s) => sum + Number(s.hours_worked), 0);
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(value);
+  };
 
   if (loading) {
     return (
@@ -370,87 +355,71 @@ const SalaryManagement = () => {
 
   return (
     <div className="space-y-6">
-      {/* Statistics */}
+      {/* --- 1. THỐNG KÊ TỔNG QUAN --- */}
       <div className="grid md:grid-cols-3 gap-4">
-        <Card className="shadow-medium overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-primary opacity-10 rounded-full -mr-8 -mt-8" />
+        <Card className="shadow-medium overflow-hidden relative border-l-4 border-l-primary">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Payout</CardTitle>
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <DollarSign className="h-4 w-4 text-primary" />
-            </div>
+            <CardTitle className="text-sm font-medium">Tổng Chi Lương</CardTitle>
+            <DollarSign className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">${totalPayout.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">All time</p>
+            {/* Đã sửa lỗi Undefined Variable */}
+            <div className="text-3xl font-bold">{formatCurrency(totalPayout)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Tổng cộng đã chi trả</p>
           </CardContent>
         </Card>
 
-        <Card className="shadow-medium overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-success/20 to-success/5 rounded-full -mr-8 -mt-8" />
+        <Card className="shadow-medium overflow-hidden relative border-l-4 border-l-success">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Bonus</CardTitle>
-            <div className="p-2 bg-success/10 rounded-lg">
-              <TrendingUp className="h-4 w-4 text-success" />
-            </div>
+            <CardTitle className="text-sm font-medium">Tổng Thưởng & Phụ cấp</CardTitle>
+            <TrendingUp className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">${totalBonus.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">Paid out</p>
+            {/* Đã sửa lỗi Undefined Variable */}
+            <div className="text-3xl font-bold">{formatCurrency(totalBonus)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Đã thanh toán</p>
           </CardContent>
         </Card>
 
-        <Card className="shadow-medium overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-warning/20 to-warning/5 rounded-full -mr-8 -mt-8" />
+        <Card className="shadow-medium overflow-hidden relative border-l-4 border-l-warning">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Hours</CardTitle>
-            <div className="p-2 bg-warning/10 rounded-lg">
-              <Clock className="h-4 w-4 text-warning" />
-            </div>
+            <CardTitle className="text-sm font-medium">Tổng Giờ Làm</CardTitle>
+            <Clock className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{totalHours.toFixed(0)}h</div>
-            <p className="text-xs text-muted-foreground mt-1">Tracked</p>
+            {/* Đã sửa lỗi Undefined Variable */}
+            <div className="text-3xl font-bold">{totalHours.toFixed(0)} giờ</div>
+            <p className="text-xs text-muted-foreground mt-1">Theo dõi từ Check-in/out</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Salary Records */}
+      {/* --- 2. BẢN GHI LƯƠNG & CÔNG CỤ QUẢN LÝ --- */}
       <Card className="shadow-strong">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <CardTitle>Salary Records</CardTitle>
-              <CardDescription>Manage employee salaries and bonuses</CardDescription>
+              <CardTitle className="text-xl">Quản lý Bản ghi Lương</CardTitle>
+              <CardDescription>Nhập lương, thưởng, khấu trừ và xem chi tiết theo từng tháng.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => exportToCSV('salary')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => exportToExcel('salary')}>
-                <Download className="h-4 w-4 mr-2" />
-                Export Excel
-              </Button>
+              <Button variant="outline" size="sm" onClick={() => exportToCSV('salary')}><FileSpreadsheet className="h-4 w-4 mr-2" />Xuất CSV</Button>
+              <Button variant="outline" size="sm" onClick={() => exportToExcel('salary')}><Download className="h-4 w-4 mr-2" />Xuất Excel</Button>
+              
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Salary
-                  </Button>
+                  <Button className="bg-primary hover:bg-primary/90"><Plus className="h-4 w-4 mr-2" /> Thêm Lương</Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Add Salary Record</DialogTitle>
-                    <DialogDescription>Create or update salary information for an employee</DialogDescription>
+                    <DialogTitle>Thêm/Cập nhật Bản ghi Lương</DialogTitle>
+                    <DialogDescription>Tạo hoặc cập nhật thông tin lương cho nhân viên.</DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Employee</Label>
+                      <Label>Nhân viên</Label>
                       <Select value={selectedUser} onValueChange={setSelectedUser}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select employee" />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Chọn nhân viên" /></SelectTrigger>
                         <SelectContent>
                           {profiles.map(profile => (
                             <SelectItem key={profile.id} value={profile.id}>
@@ -462,58 +431,33 @@ const SalaryManagement = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Month</Label>
-                      <Input
-                        type="month"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        required
-                      />
+                      <Label>Tháng</Label>
+                      <Input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} required />
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Base Salary ($)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.base_salary}
-                        onChange={(e) => setFormData({ ...formData, base_salary: e.target.value })}
-                        required
-                      />
+                      <Label>Lương Cơ bản (VND)</Label>
+                      <Input type="number" step="0.01" value={formData.base_salary} onChange={(e) => setFormData({ ...formData, base_salary: e.target.value })} required />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Bonus ($)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={formData.bonus}
-                          onChange={(e) => setFormData({ ...formData, bonus: e.target.value })}
-                        />
+                        <Label>Thưởng (VND)</Label>
+                        <Input type="number" step="0.01" value={formData.bonus} onChange={(e) => setFormData({ ...formData, bonus: e.target.value })} />
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Deductions ($)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={formData.deductions}
-                          onChange={(e) => setFormData({ ...formData, deductions: e.target.value })}
-                        />
+                        <Label>Khấu trừ (VND)</Label>
+                        <Input type="number" step="0.01" value={formData.deductions} onChange={(e) => setFormData({ ...formData, deductions: e.target.value })} />
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Notes</Label>
-                      <Textarea
-                        value={formData.notes}
-                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                        placeholder="Any additional notes..."
-                      />
+                      <Label>Ghi chú</Label>
+                      <Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Ghi chú thêm (ví dụ: Lý do thưởng/khấu trừ)..." />
                     </div>
 
-                    <Button type="submit" className="w-full">Save Salary Record</Button>
+                    <Button type="submit" className="w-full">Lưu Bản ghi Lương</Button>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -521,36 +465,32 @@ const SalaryManagement = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="border rounded-lg">
+          <div className="border rounded-lg overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Month</TableHead>
-                  <TableHead>Base Salary</TableHead>
-                  <TableHead>Bonus</TableHead>
-                  <TableHead>Deductions</TableHead>
-                  <TableHead>Hours Worked</TableHead>
-                  <TableHead>Total</TableHead>
+                  <TableHead>Nhân viên</TableHead>
+                  <TableHead>Tháng</TableHead>
+                  <TableHead>Lương CB</TableHead>
+                  <TableHead>Thưởng</TableHead>
+                  <TableHead>Khấu trừ</TableHead>
+                  <TableHead>Giờ làm</TableHead>
+                  <TableHead>Tổng</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {salaries.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      No salary records yet
-                    </TableCell>
-                  </TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Chưa có bản ghi lương nào</TableCell></TableRow>
                 ) : (
                   salaries.map((salary) => (
                     <TableRow key={salary.id}>
                       <TableCell className="font-medium">{getUserName(salary.user_id)}</TableCell>
-                      <TableCell>{format(new Date(salary.month), 'MMM yyyy')}</TableCell>
-                      <TableCell>${Number(salary.base_salary).toLocaleString()}</TableCell>
-                      <TableCell className="text-success">${Number(salary.bonus).toLocaleString()}</TableCell>
-                      <TableCell className="text-destructive">${Number(salary.deductions).toLocaleString()}</TableCell>
+                      <TableCell>{format(new Date(salary.month), 'MM/yyyy')}</TableCell>
+                      <TableCell>{formatCurrency(Number(salary.base_salary))}</TableCell>
+                      <TableCell className="text-success">{formatCurrency(Number(salary.bonus))}</TableCell>
+                      <TableCell className="text-destructive">{formatCurrency(Number(salary.deductions))}</TableCell>
                       <TableCell>{Number(salary.hours_worked).toFixed(1)}h</TableCell>
-                      <TableCell className="font-bold">${Number(salary.total_salary).toLocaleString()}</TableCell>
+                      <TableCell className="font-bold">{formatCurrency(Number(salary.total_salary))}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -560,25 +500,19 @@ const SalaryManagement = () => {
         </CardContent>
       </Card>
 
-      {/* Attendance Export Section */}
+      {/* --- 3. XUẤT DỮ LIỆU CHẤM CÔNG --- */}
       <Card className="shadow-strong">
         <CardHeader>
-          <CardTitle>Attendance Data Export</CardTitle>
-          <CardDescription>Export complete attendance records for all employees</CardDescription>
+          <CardTitle className="text-xl">Xuất Dữ liệu Chấm công</CardTitle>
+          <CardDescription>Xuất toàn bộ bản ghi chấm công để tính lương hoặc báo cáo.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button variant="outline" onClick={() => exportToCSV('attendance')} className="flex-1">
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Export Attendance to CSV
-            </Button>
-            <Button variant="outline" onClick={() => exportToExcel('attendance')} className="flex-1">
-              <Download className="h-4 w-4 mr-2" />
-              Export Attendance to Excel
-            </Button>
+            <Button variant="outline" onClick={() => exportToCSV('attendance')} className="flex-1"><FileSpreadsheet className="h-4 w-4 mr-2" />Xuất Chấm công CSV</Button>
+            <Button variant="outline" onClick={() => exportToExcel('attendance')} className="flex-1"><Download className="h-4 w-4 mr-2" />Xuất Chấm công Excel</Button>
           </div>
           <p className="text-sm text-muted-foreground mt-4">
-            Exports up to 1,000 most recent attendance records with employee details, check-in/out times, and locations.
+            Xuất tối đa 1,000 bản ghi chấm công gần nhất.
           </p>
         </CardContent>
       </Card>

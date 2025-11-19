@@ -1,299 +1,343 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Users, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle,
-  TrendingUp,
-  Calendar,
-  FileText
+    Users, CheckCircle2, Clock, AlertCircle, TrendingUp, Calendar, 
+    FileText, Briefcase, Zap, ChevronRight 
 } from "lucide-react";
 import { getUserRole, getCurrentUser } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
-import { UserRole } from "@/lib/auth";
+import { UserRole } from "@/lib/auth"; 
 import { SkeletonStatCard } from "@/components/ui/skeleton-card";
+import { useNavigate } from "react-router-dom";
+import { format } from "date-fns";
+
+
+// Định nghĩa kiểu dữ liệu thống kê
+type DashboardStats = {
+    totalTasks: number; completedTasks: number; pendingTasks: number;
+    todayAttendance: boolean; leaveBalance: number; upcomingMeetings: number;
+    totalEmployees?: number; pendingApprovals?: number;
+};
+
+// Định nghĩa kiểu dữ liệu cơ bản cho Tasks và Profile (cho mục đích ép kiểu an toàn)
+interface BasicTask { status: string; }
+interface BasicProfile { annual_leave_balance: number; }
+
 
 const Dashboard = () => {
-  const [role, setRole] = useState<UserRole>('staff');
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalTasks: 0,
-    completedTasks: 0,
-    pendingTasks: 0,
-    todayAttendance: false,
-    leaveBalance: 12,
-    upcomingMeetings: 0
-  });
-
-  useEffect(() => {
-    const loadDashboard = async () => {
-      try {
-        const user = await getCurrentUser();
-        if (!user) return;
-
-        const userRole = await getUserRole(user.id);
-        setRole(userRole);
-
-        // Load stats based on role
-        if (userRole === 'staff') {
-          await loadStaffStats(user.id);
-        } else if (userRole === 'leader') {
-          await loadLeaderStats(user.id);
-        } else if (userRole === 'admin') {
-          await loadAdminStats();
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadDashboard();
-  }, []);
-
-  const loadStaffStats = async (userId: string) => {
-    // Load tasks
-    const { data: tasks } = await supabase
-      .from('tasks')
-      .select('status')
-      .eq('assignee_id', userId);
-
-    const totalTasks = tasks?.length || 0;
-    const completedTasks = tasks?.filter(t => t.status === 'done').length || 0;
-    const pendingTasks = tasks?.filter(t => t.status !== 'done').length || 0;
-
-    // Check today's attendance
-    const today = new Date().toISOString().split('T')[0];
-    const { data: attendance } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('timestamp', `${today}T00:00:00`)
-      .eq('type', 'check_in')
-      .limit(1);
-
-    // Load profile for leave balance
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('annual_leave_balance')
-      .eq('id', userId)
-      .single();
-
-    // Load upcoming meetings
-    const { data: meetings } = await supabase
-      .from('room_bookings')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('start_time', new Date().toISOString())
-      .limit(5);
-
-    setStats({
-      totalTasks,
-      completedTasks,
-      pendingTasks,
-      todayAttendance: (attendance?.length || 0) > 0,
-      leaveBalance: profile?.annual_leave_balance || 12,
-      upcomingMeetings: meetings?.length || 0
+    const navigate = useNavigate(); 
+    // Giả định 'staff' là một UserRole hợp lệ, nếu không, phải dùng 'employee' as UserRole
+    const [role, setRole] = useState<UserRole>('staff' as UserRole); 
+    const [loading, setLoading] = useState(true);
+    const [userName, setUserName] = useState(''); 
+    
+    const [stats, setStats] = useState<DashboardStats>({
+        totalTasks: 0, completedTasks: 0, pendingTasks: 0,
+        leaveBalance: 0, todayAttendance: false, upcomingMeetings: 0
     });
-  };
 
-  const loadLeaderStats = async (userId: string) => {
-    // Similar to staff but for team
-    loadStaffStats(userId);
-  };
+    // --- LOGIC TẢI DỮ LIỆU THEO VAI TRÒ (Dùng useCallback) ---
 
-  const loadAdminStats = async () => {
-    // Load company-wide stats
-    const { data: tasks } = await supabase
-      .from('tasks')
-      .select('status');
+    const loadEmployeeStats = useCallback(async (userId: string) => {
+        try {
+            // Load tasks
+            const { data: tasks } = await supabase.from('tasks').select('status').eq('assignee_id', userId);
+            
+            // FIX LỖI: Dùng 'as unknown as any[]' để vượt qua lỗi Typescript sâu
+            const taskList = tasks as unknown as BasicTask[] || [];
+            
+            const totalTasks = taskList.length;
+            const completedTasks = taskList.filter((t: BasicTask) => t.status === 'done').length; // FIX: Chỉ dùng 'done'
+            const pendingTasks = totalTasks - completedTasks;
 
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('*');
+            // Kiểm tra điểm danh hôm nay
+            const today = format(new Date(), 'yyyy-MM-dd');
+            const { data: attendance } = await supabase.from('attendance').select('*').eq('user_id', userId).eq('date', today).limit(1);
 
-    const totalTasks = tasks?.length || 0;
-    const completedTasks = tasks?.filter(t => t.status === 'done').length || 0;
+            // Load số ngày phép
+            const { data: profile } = await supabase.from('profiles').select('annual_leave_balance').eq('id', userId).single();
 
-    setStats(prev => ({
-      ...prev,
-      totalTasks,
-      completedTasks,
-      pendingTasks: totalTasks - completedTasks
-    }));
-  };
+            // Load cuộc họp sắp tới
+            const { data: meetings } = await supabase.from('room_bookings').select('*').eq('user_id', userId).gte('start_time', new Date().toISOString()).limit(5);
 
-  const taskCompletionRate = stats.totalTasks > 0 
-    ? Math.round((stats.completedTasks / stats.totalTasks) * 100) 
-    : 0;
+            setStats({
+                totalTasks, completedTasks, pendingTasks,
+                todayAttendance: (attendance?.length || 0) > 0,
+                // FIX LỖI ANY: Ép kiểu profile an toàn
+                leaveBalance: (profile as BasicProfile)?.annual_leave_balance || 0, 
+                upcomingMeetings: meetings?.length || 0,
+            });
+        } catch (error) {
+            console.error("Lỗi tải stats nhân viên:", error);
+        }
+    }, []);
 
-  if (loading) {
+    const loadAdminStats = useCallback(async () => {
+        try {
+            // Load toàn công ty
+            const { data: tasks } = await supabase.from('tasks').select('status');
+            const { data: profiles } = await supabase.from('profiles').select('id, annual_leave_balance');
+            const { data: pendingRequests } = await supabase.from('leave_requests').select('*').eq('status', 'pending');
+
+            const taskList = tasks as unknown as BasicTask[] || [];
+            
+            const totalTasks = taskList.length;
+            const completedTasks = taskList.filter((t: BasicTask) => t.status === 'done').length; 
+            const totalEmployees = profiles?.length || 0;
+            const pendingApprovals = pendingRequests?.length || 0;
+
+            setStats(prev => ({
+                ...prev,
+                totalTasks,
+                completedTasks,
+                pendingTasks: totalTasks - completedTasks,
+                totalEmployees,
+                pendingApprovals,
+            }));
+        } catch (error) {
+            console.error("Lỗi tải stats Admin:", error);
+        }
+    }, []);
+
+    // --- LOGIC TẢI DATA CHÍNH ---
+    useEffect(() => {
+        const loadDashboard = async () => {
+            setLoading(true);
+            try {
+                const user = await getCurrentUser();
+                if (!user) return;
+
+                // Lấy tên người dùng cho tiêu đề
+                const { data: profile } = await supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single();
+                setUserName(profile ? `${profile.last_name || ''} ${profile.first_name || ''}`.trim() : user.email);
+
+                const userRole = await getUserRole(user.id);
+                setRole(userRole);
+
+                // FIX LỖI SO SÁNH: Sử dụng các giá trị hợp lệ trong UserRole
+                if (userRole === 'staff' || userRole === 'employee') {
+                    await loadEmployeeStats(user.id);
+                } else if (userRole === 'leader' || userRole === 'admin' || userRole === 'bod') {
+                    await loadAdminStats();
+                }
+            } catch (error) {
+                console.error("Lỗi tải dashboard:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadDashboard();
+    }, [loadEmployeeStats, loadAdminStats]); // Thêm dependencies cho hooks
+
+    const taskCompletionRate = stats.totalTasks > 0 
+        ? Math.round((stats.completedTasks / stats.totalTasks) * 100) 
+        : 0;
+
+    // Tiêu đề dựa trên Vai trò và Tên
+    const roleTitle = role === 'admin' || role === 'bod' ? 'Quản trị' : role === 'leader' ? 'Leader' : 'Nhân viên';
+
+
+    // --- UI RENDER ---
+    if (loading) {
+        return (
+            <DashboardLayout role={role}>
+                <div className="space-y-6 animate-fade-in pb-20 md:pb-6">
+                    <div className="mb-2">
+                        <h2 className="text-4xl font-extrabold tracking-tight text-primary">Bảng Điều Khiển</h2>
+                        <p className="text-muted-foreground mt-2">Đang tải dữ liệu tổng quan, vui lòng chờ...</p>
+                    </div>
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                        <SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard />
+                    </div>
+                </div>
+            </DashboardLayout>
+        );
+    }
+
     return (
-      <DashboardLayout role={role}>
-        <div className="space-y-6 animate-fade-in pb-20 md:pb-6">
-          <div className="mb-2">
-            <h2 className="text-4xl font-heading font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-              Dashboard
-            </h2>
-            <p className="text-muted-foreground mt-2">Welcome back! Here's your overview</p>
-          </div>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            <SkeletonStatCard />
-            <SkeletonStatCard />
-            <SkeletonStatCard />
-            <SkeletonStatCard />
-          </div>
-        </div>
-      </DashboardLayout>
+        <DashboardLayout role={role}>
+            <div className="space-y-8 animate-fade-in pb-10">
+                
+                {/* --- HEADER CHÀO MỪNG --- */}
+                <div className="mb-4">
+                    <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-foreground">
+                        Chào mừng, <span className="text-primary">{userName || 'User'}!</span>
+                    </h2>
+                    <p className="text-muted-foreground mt-1 text-sm">Bảng điều khiển {roleTitle} | Tổng quan hoạt động hôm nay.</p>
+                </div>
+
+                {/* --- 1. LƯỚI THỐNG KÊ (STATS GRID) --- */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    
+                    {/* Thẻ 1: Tổng Công Việc */}
+                    <Card className="shadow-lg border-l-4 border-l-primary hover:shadow-xl transition-shadow">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Tổng Công Việc</CardTitle>
+                            <FileText className="h-4 w-4 text-primary" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{stats.totalTasks}</div>
+                            <p className="text-xs text-muted-foreground mt-1">{stats.pendingTasks} đang chờ</p>
+                        </CardContent>
+                    </Card>
+
+                    {/* Thẻ 2: Hoàn thành */}
+                    <Card className="shadow-lg border-l-4 border-l-green-500 hover:shadow-xl transition-shadow">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Hoàn thành</CardTitle>
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{stats.completedTasks}</div>
+                            <div className="mt-3 space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">Tiến độ</span>
+                                    <span className="font-semibold text-green-600">{taskCompletionRate}%</span>
+                                </div>
+                                <Progress value={taskCompletionRate} className="h-2 bg-green-200" />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Thẻ 3: Điểm Danh */}
+                    <Card className="shadow-lg border-l-4 border-l-yellow-500 hover:shadow-xl transition-shadow">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Điểm Danh</CardTitle>
+                            <Clock className="h-4 w-4 text-yellow-500" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="mt-1">
+                                {stats.todayAttendance ? (
+                                    <Badge className="bg-green-600 text-white hover:bg-green-700">Đã Check In</Badge>
+                                ) : (
+                                    <Badge variant="outline" className="border-yellow-500 text-yellow-600">Chưa Check In</Badge>
+                                )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-3">Trạng thái hôm nay</p>
+                        </CardContent>
+                    </Card>
+
+                    {/* Thẻ 4: Ngày Phép (Nổi bật) */}
+                    <Card className="shadow-lg border-l-4 border-l-blue-600 hover:shadow-xl transition-shadow">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Ngày Phép</CardTitle>
+                            <Calendar className="h-4 w-4 text-blue-600" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold text-blue-700">{stats.leaveBalance}</div>
+                            <p className="text-xs text-muted-foreground mt-1">ngày còn lại</p>
+                        </CardContent>
+                    </Card>
+                    
+                    {/* Thẻ cho Admin/Leader */}
+                    {(role === 'admin' || role === 'bod') && (
+                        <>
+                            <Card className="shadow-lg border-l-4 border-l-indigo-500 hover:shadow-xl transition-shadow sm:col-span-1 md:col-span-1">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Tổng Nhân viên</CardTitle>
+                                    <Users className="h-4 w-4 text-indigo-500" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-3xl font-bold">{stats.totalEmployees || 0}</div>
+                                    <p className="text-xs text-muted-foreground mt-1">tài khoản hoạt động</p>
+                                </CardContent>
+                            </Card>
+                            <Card className="shadow-lg border-l-4 border-l-red-500 hover:shadow-xl transition-shadow sm:col-span-1 md:col-span-1">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Phê duyệt Chờ</CardTitle>
+                                    <AlertCircle className="h-4 w-4 text-red-500" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-3xl font-bold">{stats.pendingApprovals || 0}</div>
+                                    <p className="text-xs text-muted-foreground mt-1">yêu cầu nghỉ phép/tài khoản chờ</p>
+                                </CardContent>
+                            </Card>
+                        </>
+                    )}
+
+                </div>
+
+                {/* --- 2. HÀNH ĐỘNG NHANH --- */}
+                <Card className="shadow-lg mt-8">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-xl font-semibold">
+                            <Zap className="h-5 w-5 text-primary" />
+                            Hành Động Nhanh
+                        </CardTitle>
+                        <CardDescription>Truy cập các chức năng cốt lõi ngay lập tức.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            
+                            {/* Nút 1: Điểm danh */}
+                            <button 
+                                className="group p-4 rounded-xl border-2 border-border hover:border-primary transition-shadow duration-300 text-left flex items-center justify-between bg-card"
+                                onClick={() => navigate('/attendance')} 
+                            >
+                                <div className="flex items-center gap-3">
+                                    <Clock className="h-6 w-6 text-primary shrink-0" />
+                                    <div>
+                                        <h4 className="font-semibold">Điểm danh</h4>
+                                        <p className="text-sm text-muted-foreground">Ghi nhận thời gian làm việc</p>
+                                    </div>
+                                </div>
+                                <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+                            </button>
+                            
+                            {/* Nút 2: Tạo Công Việc */}
+                            <button 
+                                className="group p-4 rounded-xl border-2 border-border hover:border-primary transition-shadow duration-300 text-left flex items-center justify-between bg-card"
+                                onClick={() => navigate('/tasks/new')} 
+                            >
+                                <div className="flex items-center gap-3">
+                                    <FileText className="h-6 w-6 text-primary shrink-0" />
+                                    <div>
+                                        <h4 className="font-semibold">Tạo Công Việc</h4>
+                                        <p className="text-sm text-muted-foreground">Thêm nhiệm vụ mới</p>
+                                    </div>
+                                </div>
+                                <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+                            </button>
+                            
+                            {/* Nút 3: Gửi Yêu cầu Nghỉ phép */}
+                            <button 
+                                className="group p-4 rounded-xl border-2 border-border hover:border-primary transition-shadow duration-300 text-left flex items-center justify-between bg-card"
+                                onClick={() => navigate('/leave')} 
+                            >
+                                <div className="flex items-center gap-3">
+                                    <Briefcase className="h-6 w-6 text-primary shrink-0" />
+                                    <div>
+                                        <h4 className="font-semibold">Nghỉ phép</h4>
+                                        <p className="text-sm text-muted-foreground">Gửi yêu cầu nghỉ phép</p>
+                                    </div>
+                                </div>
+                                <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+                            </button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Recent Activity */}
+                <Card className="shadow-md">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <AlertCircle className="h-5 w-5 text-primary" />
+                            Hoạt Động Gần Đây
+                        </CardTitle>
+                        <CardDescription>Các cập nhật mới nhất</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="p-4 rounded-lg bg-secondary/50 border border-border text-center text-muted-foreground">
+                            <p>Chưa có dữ liệu hoạt động gần đây.</p>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        </DashboardLayout>
     );
-  }
-
-  return (
-    <DashboardLayout role={role}>
-      <div className="space-y-6 animate-fade-in pb-20 md:pb-6">
-        <div className="mb-2">
-          <h2 className="text-4xl font-heading font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-            Dashboard
-          </h2>
-          <p className="text-muted-foreground mt-2">Welcome back! Here's your overview</p>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="shadow-medium transition-smooth hover:shadow-strong overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-primary opacity-10 rounded-full -mr-8 -mt-8" />
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <FileText className="h-4 w-4 text-primary" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.totalTasks}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {stats.pendingTasks} pending
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-medium transition-smooth hover:shadow-strong overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-success/20 to-success/5 rounded-full -mr-8 -mt-8" />
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Completed</CardTitle>
-              <div className="p-2 bg-success/10 rounded-lg">
-                <CheckCircle2 className="h-4 w-4 text-success" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.completedTasks}</div>
-              <div className="mt-3 space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Progress</span>
-                  <span className="font-semibold text-success">{taskCompletionRate}%</span>
-                </div>
-                <Progress value={taskCompletionRate} className="h-2" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-medium transition-smooth hover:shadow-strong overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-warning/20 to-warning/5 rounded-full -mr-8 -mt-8" />
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Attendance</CardTitle>
-              <div className="p-2 bg-warning/10 rounded-lg">
-                <Clock className="h-4 w-4 text-warning" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="mt-1">
-                {stats.todayAttendance ? (
-                  <Badge className="bg-success text-success-foreground">Checked In</Badge>
-                ) : (
-                  <Badge variant="outline" className="border-muted-foreground/50">Not Checked In</Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">Today's status</p>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-medium transition-smooth hover:shadow-strong overflow-hidden relative bg-gradient-primary">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-primary-foreground">Leave Balance</CardTitle>
-              <div className="p-2 bg-white/20 rounded-lg">
-                <Calendar className="h-4 w-4 text-primary-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-primary-foreground">{stats.leaveBalance}</div>
-              <p className="text-xs text-primary-foreground/80 mt-1">days remaining</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Quick Actions */}
-        <Card className="shadow-strong">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              Quick Actions
-            </CardTitle>
-            <CardDescription>Common tasks you might want to do</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
-              <button className="group p-6 rounded-lg border-2 border-border hover:border-primary transition-smooth text-left hover:shadow-medium bg-gradient-to-br from-card to-secondary/30">
-                <div className="p-3 bg-primary/10 rounded-lg w-fit group-hover:bg-primary/20 transition-smooth">
-                  <Clock className="h-6 w-6 text-primary" />
-                </div>
-                <h4 className="font-semibold mt-4 mb-1">Check In/Out</h4>
-                <p className="text-sm text-muted-foreground">Record attendance</p>
-              </button>
-              
-              <button className="group p-6 rounded-lg border-2 border-border hover:border-primary transition-smooth text-left hover:shadow-medium bg-gradient-to-br from-card to-secondary/30">
-                <div className="p-3 bg-primary/10 rounded-lg w-fit group-hover:bg-primary/20 transition-smooth">
-                  <FileText className="h-6 w-6 text-primary" />
-                </div>
-                <h4 className="font-semibold mt-4 mb-1">Create Task</h4>
-                <p className="text-sm text-muted-foreground">Add new task</p>
-              </button>
-              
-              <button className="group p-6 rounded-lg border-2 border-border hover:border-primary transition-smooth text-left hover:shadow-medium bg-gradient-to-br from-card to-secondary/30">
-                <div className="p-3 bg-primary/10 rounded-lg w-fit group-hover:bg-primary/20 transition-smooth">
-                  <Calendar className="h-6 w-6 text-primary" />
-                </div>
-                <h4 className="font-semibold mt-4 mb-1">Book Meeting</h4>
-                <p className="text-sm text-muted-foreground">Reserve a room</p>
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Activity */}
-        <Card className="shadow-strong">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-primary" />
-              Recent Activity
-            </CardTitle>
-            <CardDescription>Latest updates and changes</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-secondary/50 border border-border">
-                <div className="w-2 h-2 mt-2 rounded-full bg-primary animate-pulse-glow" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">System initialized</p>
-                  <p className="text-xs text-muted-foreground mt-1">Welcome to HRM CRM</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </DashboardLayout>
-  );
 };
 
 export default Dashboard;
