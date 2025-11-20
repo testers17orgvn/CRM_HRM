@@ -97,12 +97,12 @@ const UsersManagement = () => {
             }
 
             // ÁP DỤNG BỘ LỌC ACCOUNT STATUS
-            if (filterAccountStatus) {
+            if (filterAccountStatus && filterAccountStatus !== 'all') {
                 query = query.eq('account_status', filterAccountStatus);
             }
 
             // ÁP DỤNG BỘ LỌC EMPLOYMENT STATUS
-            if (filterStatus) {
+            if (filterStatus && filterStatus !== 'all') {
                 query = query.eq('employment_status', filterStatus);
             }
 
@@ -113,7 +113,7 @@ const UsersManagement = () => {
             let filteredUsers = (data as unknown as UserDetail[] || []);
 
             // FILTER BY ROLE (CLIENT SIDE vì join phức tạp)
-            if (filterRole) {
+            if (filterRole && filterRole !== 'all') {
                 filteredUsers = filteredUsers.filter(user => {
                     if (!user.user_roles) return false;
                     return user.user_roles.some(r => r.role === filterRole);
@@ -337,7 +337,7 @@ const UsersManagement = () => {
                                                     onClick={() => handleApproveUser(user.id, `${user.first_name} ${user.last_name}`)}
                                                 >
                                                     {isApprovingUser === user.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
-                                                    Phê duyệt
+                                                    Phê duy���t
                                                 </Button>
                                                 <Button
                                                     size="sm"
@@ -445,7 +445,7 @@ const UsersManagement = () => {
                                     <SelectValue placeholder="Tất cả" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">Tất cả</SelectItem>
+                                    <SelectItem value="all">Tất cả</SelectItem>
                                     <SelectItem value="PENDING">Chờ duyệt</SelectItem>
                                     <SelectItem value="APPROVED">Đã duyệt</SelectItem>
                                     <SelectItem value="REJECTED">Từ chối</SelectItem>
@@ -460,7 +460,7 @@ const UsersManagement = () => {
                                     <SelectValue placeholder="Tất cả" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">Tất cả</SelectItem>
+                                    <SelectItem value="all">Tất cả</SelectItem>
                                     <SelectItem value="admin">Admin</SelectItem>
                                     <SelectItem value="hr">HR</SelectItem>
                                     <SelectItem value="leader">Leader</SelectItem>
@@ -480,7 +480,7 @@ const UsersManagement = () => {
                                     <SelectValue placeholder="Tất cả" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">Tất cả</SelectItem>
+                                    <SelectItem value="all">Tất cả</SelectItem>
                                     <SelectItem value="Employed">Đã đi làm</SelectItem>
                                     <SelectItem value="Student">Sinh viên</SelectItem>
                                 </SelectContent>
@@ -495,9 +495,9 @@ const UsersManagement = () => {
                                 className="w-full h-9"
                                 onClick={() => {
                                     setSearchTerm('');
-                                    setFilterRole('');
-                                    setFilterStatus('');
-                                    setFilterAccountStatus('');
+                                    setFilterRole('all');
+                                    setFilterStatus('all');
+                                    setFilterAccountStatus('all');
                                 }}
                             >
                                 Đặt lại bộ lọc
