@@ -249,8 +249,8 @@ const Login = () => {
                         {/* --- TAB CONTENT: ĐĂNG KÝ --- */}
                         <TabsContent value="signup">
                             <form onSubmit={handleSignup}>
-                                <CardContent className="space-y-6 pt-6">
-                                    
+                                <CardContent className="space-y-5 pt-6 max-h-[500px] overflow-y-auto">
+
                                     <div className="grid grid-cols-2 gap-4">
                                         {/* First Name */}
                                         <div className="space-y-2">
@@ -258,7 +258,7 @@ const Login = () => {
                                             <Input
                                                 id="signup-firstname"
                                                 type="text"
-                                                placeholder=""
+                                                placeholder="Nguyễn"
                                                 value={signupFirstName}
                                                 onChange={(e) => setSignupFirstName(e.target.value)}
                                                 required
@@ -271,7 +271,7 @@ const Login = () => {
                                             <Input
                                                 id="signup-lastname"
                                                 type="text"
-                                                placeholder=""
+                                                placeholder="Văn A"
                                                 value={signupLastName}
                                                 onChange={(e) => setSignupLastName(e.target.value)}
                                                 required
@@ -279,47 +279,82 @@ const Login = () => {
                                             />
                                         </div>
                                     </div>
+
                                     <div className="space-y-2">
-                                        <Label htmlFor="signup-email">Số điện thoại</Label>
+                                        <Label htmlFor="signup-phone">Số điện thoại</Label>
                                         <Input
-                                            id="numberID"
-                                            type="number"
-                                            placeholder=""
-                                            value={signupEmail}
-                                            onChange={(e) => setSignupEmail(e.target.value)}
-                                            required
+                                            id="signup-phone"
+                                            type="tel"
+                                            placeholder="0901234567"
+                                            value={signupPhone}
+                                            onChange={(e) => setSignupPhone(e.target.value)}
                                             disabled={isLoading}
                                         />
                                     </div>
+
                                     <div className="space-y-2">
                                         <Label htmlFor="signup-email">Email</Label>
                                         <Input
                                             id="signup-email"
                                             type="email"
-                                            placeholder=""
+                                            placeholder="email@company.com"
                                             value={signupEmail}
                                             onChange={(e) => setSignupEmail(e.target.value)}
                                             required
                                             disabled={isLoading}
                                         />
                                     </div>
-                                    
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="signup-role">Vị Trí Công Việc</Label>
+                                            <Select value={signupRole} onValueChange={setSignupRole} disabled={isLoading}>
+                                                <SelectTrigger id="signup-role">
+                                                    <SelectValue placeholder="Chọn vị trí" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {ROLES.map(role => (
+                                                        <SelectItem key={role.value} value={role.value}>
+                                                            {role.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label htmlFor="signup-department">Phòng Ban</Label>
+                                            <Select value={signupDepartment} onValueChange={setSignupDepartment} disabled={isLoading}>
+                                                <SelectTrigger id="signup-department">
+                                                    <SelectValue placeholder="Chọn phòng ban" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {DEPARTMENTS.map(dept => (
+                                                        <SelectItem key={dept.value} value={dept.value}>
+                                                            {dept.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-2">
                                         <Label htmlFor="signup-password">Mật khẩu</Label>
                                         <Input
                                             id="signup-password"
                                             type="password"
-                                            placeholder=""
+                                            placeholder="••••••"
                                             value={signupPassword}
                                             onChange={(e) => setSignupPassword(e.target.value)}
                                             required
                                             disabled={isLoading}
                                             minLength={6}
                                         />
-                                        <p className="text-xs text-muted-foreground pt-1">Mật khẩu tối thiểu 6 ký tự.</p>
+                                        <p className="text-xs text-muted-foreground pt-1">Tối thiểu 6 ký tự.</p>
                                     </div>
                                 </CardContent>
-                                
+
                                 <CardFooter>
                                     <Button type="submit" className="w-full h-10 text-base gradient-primary shadow-lg shadow-primary/30" disabled={isLoading}>
                                         {isLoading ? (
