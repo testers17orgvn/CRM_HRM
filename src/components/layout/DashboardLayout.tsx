@@ -13,6 +13,7 @@ import {
 import { getCurrentUser, getUserProfile, signOut, UserRole, getUserRole } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { supabase } from "@/integrations/supabase/client";
 
 // --- Định nghĩa kiểu dữ liệu ---
 
