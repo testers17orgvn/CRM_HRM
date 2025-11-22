@@ -139,7 +139,7 @@ const ShiftAttendanceWidget = () => {
       }
       setTodayRecords(data || []);
     } catch (error) {
-      let errorMessage = 'Không thể t���i chấm công hôm nay';
+      let errorMessage = 'Không thể tải chấm công hôm nay';
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === 'string') {
@@ -209,20 +209,48 @@ const ShiftAttendanceWidget = () => {
     setIsLoading(true);
     try {
       const location = await getLocation();
-      const timestamp = new Date().toISOString();
+      const today = new Date().toISOString().split('T')[0];
+      const checkInTime = new Date().toISOString();
 
-      const { error } = await supabase
-        .from('attendance')
-        .insert({
-          user_id: userId,
-          type: 'check_in',
-          timestamp,
-          shift_type: shiftType,
-          location,
-          is_leave: false
-        });
+      const { data: existingRecord, error: fetchError } = await supabase
+        .from('shift_attendance')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('date', today)
+        .eq('shift_type', shiftType)
+        .single();
 
-      if (error) throw error;
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw new Error(fetchError.message);
+      }
+
+      if (existingRecord) {
+        // Update existing record with check_in
+        const { error: updateError } = await supabase
+          .from('shift_attendance')
+          .update({
+            check_in: checkInTime,
+            location,
+            status: 'checked_in'
+          })
+          .eq('id', existingRecord.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Create new record
+        const { error: insertError } = await supabase
+          .from('shift_attendance')
+          .insert({
+            user_id: userId,
+            shift_type: shiftType,
+            date: today,
+            check_in: checkInTime,
+            location,
+            status: 'checked_in'
+          });
+
+        if (insertError) throw insertError;
+      }
 
       toast({
         title: "Chấm công thành công",
@@ -247,20 +275,34 @@ const ShiftAttendanceWidget = () => {
     setIsLoading(true);
     try {
       const location = await getLocation();
-      const timestamp = new Date().toISOString();
+      const today = new Date().toISOString().split('T')[0];
+      const checkOutTime = new Date().toISOString();
 
-      const { error } = await supabase
-        .from('attendance')
-        .insert({
-          user_id: userId,
-          type: 'check_out',
-          timestamp,
-          shift_type: shiftType,
-          location,
-          is_leave: false
-        });
+      const { data: existingRecord, error: fetchError } = await supabase
+        .from('shift_attendance')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('date', today)
+        .eq('shift_type', shiftType)
+        .single();
 
-      if (error) throw error;
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw new Error(fetchError.message);
+      }
+
+      if (existingRecord) {
+        // Update existing record with check_out
+        const { error: updateError } = await supabase
+          .from('shift_attendance')
+          .update({
+            check_out: checkOutTime,
+            location,
+            status: 'completed'
+          })
+          .eq('id', existingRecord.id);
+
+        if (updateError) throw updateError;
+      }
 
       toast({
         title: "Chấm công thành công",
