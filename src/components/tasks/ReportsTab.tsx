@@ -79,11 +79,26 @@ const ReportsTab = ({ role }: { role: UserRole }) => {
       }
 
       const { data: reportsData, error: reportsError } = await reportsQuery.order('report_date', { ascending: false });
+
       if (reportsError) {
-        console.error('Reports query error:', reportsError);
-        throw new Error(reportsError.message || 'Failed to load reports');
+        console.error('Reports query error:', {
+          message: reportsError.message,
+          code: reportsError.code,
+          details: reportsError.details,
+          hint: reportsError.hint,
+          fullError: reportsError
+        });
+
+        // Check if it's a "relation does not exist" error (table not created)
+        if (reportsError.message?.includes('relation') || reportsError.code === 'PGRST116') {
+          console.warn('Daily reports table may not exist yet. Initializing with empty data.');
+          setReports([]);
+        } else {
+          throw new Error(reportsError.message || 'Failed to load reports');
+        }
+      } else {
+        setReports(reportsData || []);
       }
-      setReports(reportsData || []);
 
       // Load meeting minutes
       const { data: meetingsData, error: meetingsError } = await supabase
@@ -92,10 +107,24 @@ const ReportsTab = ({ role }: { role: UserRole }) => {
         .order('meeting_date', { ascending: false });
 
       if (meetingsError) {
-        console.error('Meetings query error:', meetingsError);
-        throw new Error(meetingsError.message || 'Failed to load meetings');
+        console.error('Meetings query error:', {
+          message: meetingsError.message,
+          code: meetingsError.code,
+          details: meetingsError.details,
+          hint: meetingsError.hint,
+          fullError: meetingsError
+        });
+
+        // Check if it's a "relation does not exist" error
+        if (meetingsError.message?.includes('relation') || meetingsError.code === 'PGRST116') {
+          console.warn('Meeting minutes table may not exist yet. Initializing with empty data.');
+          setMeetings([]);
+        } else {
+          throw new Error(meetingsError.message || 'Failed to load meetings');
+        }
+      } else {
+        setMeetings(meetingsData || []);
       }
-      setMeetings(meetingsData || []);
 
     } catch (error) {
       let errorMessage = 'Không thể tải báo cáo. Vui lòng thử lại sau.';
@@ -105,7 +134,8 @@ const ReportsTab = ({ role }: { role: UserRole }) => {
       } else if (typeof error === 'string') {
         errorMessage = error;
       } else if (error && typeof error === 'object') {
-        errorMessage = JSON.stringify(error);
+        const errorObj = error as any;
+        errorMessage = errorObj.message || errorObj.msg || JSON.stringify(error);
       }
 
       console.error('Error loading reports:', error);
