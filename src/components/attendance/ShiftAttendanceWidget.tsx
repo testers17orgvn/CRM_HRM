@@ -14,14 +14,15 @@ type ShiftType = 'morning' | 'afternoon' | 'overtime';
 interface ShiftRecord {
   id: string;
   user_id: string;
-  type: 'check_in' | 'check_out';
-  timestamp: string;
   shift_type: ShiftType;
-  status?: 'pending' | 'checked_in' | 'completed' | 'absent';
+  date: string;
+  check_in: string | null;
+  check_out: string | null;
+  status: 'pending' | 'checked_in' | 'completed' | 'absent';
   location: string | null;
   notes: string | null;
-  is_leave?: boolean;
-  leave_type?: 'annual' | 'sick' | 'unpaid' | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface ShiftStats {
@@ -56,16 +57,15 @@ const ShiftAttendanceWidget = () => {
     const monthEnd = endOfMonth(new Date());
 
     const monthRecords = records.filter(r => {
-      const recordDate = new Date(r.timestamp);
+      const recordDate = new Date(r.date);
       return recordDate >= monthStart && recordDate <= monthEnd;
     });
 
-    // Count by shift type per day
+    // Group by day (all shifts per day count as one work day)
     const shiftsByDay: { [key: string]: ShiftRecord[] } = {};
     monthRecords.forEach(r => {
-      const dateStr = new Date(r.timestamp).toISOString().split('T')[0];
-      if (!shiftsByDay[dateStr]) shiftsByDay[dateStr] = [];
-      shiftsByDay[dateStr].push(r);
+      if (!shiftsByDay[r.date]) shiftsByDay[r.date] = [];
+      shiftsByDay[r.date].push(r);
     });
 
     let completedShifts = 0;
@@ -73,14 +73,16 @@ const ShiftAttendanceWidget = () => {
     let absentShifts = 0;
 
     Object.values(shiftsByDay).forEach(dayRecords => {
-      const hasCheckIn = dayRecords.some(r => r.type === 'check_in');
-      const hasCheckOut = dayRecords.some(r => r.type === 'check_out');
+      // Check if all shifts for the day are completed
+      const allCompleted = dayRecords.every(r => r.status === 'completed');
+      const allAbsent = dayRecords.every(r => r.status === 'absent');
+      const anyCheckedIn = dayRecords.some(r => r.status === 'checked_in');
 
-      if (dayRecords.some(r => r.is_leave)) {
+      if (allAbsent) {
         absentShifts++;
-      } else if (hasCheckIn && hasCheckOut) {
+      } else if (allCompleted) {
         completedShifts++;
-      } else if (hasCheckIn) {
+      } else if (anyCheckedIn || dayRecords.some(r => r.status === 'pending')) {
         pendingShifts++;
       } else {
         absentShifts++;
@@ -165,13 +167,13 @@ const ShiftAttendanceWidget = () => {
     if (!userId) return;
 
     const channel = supabase
-      .channel('attendance-changes')
+      .channel('shift_attendance-changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'attendance',
+          table: 'shift_attendance',
           filter: `user_id=eq.${userId}`
         },
         () => {
