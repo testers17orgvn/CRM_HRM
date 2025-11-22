@@ -89,11 +89,20 @@ const ReportsTab = ({ role }: { role: UserRole }) => {
       setMeetings(meetingsData || []);
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Error loading reports:', errorMessage);
+      let errorMessage = 'Không thể tải báo cáo. Vui lòng thử lại sau.';
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String((error as any).message);
+      }
+
+      console.error('Error loading reports:', error, errorMessage);
       toast({
         title: "Lỗi tải báo cáo",
-        description: errorMessage || "Không thể tải báo cáo. Vui lòng thử lại sau.",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -254,7 +263,7 @@ const ReportsTab = ({ role }: { role: UserRole }) => {
       <Card className="bg-blue-50 border-blue-200">
         <CardContent className="pt-6">
           <p className="text-sm text-blue-900">
-            <strong>���️ Thông tin:</strong> Báo cáo được lưu trữ trong cơ sở dữ liệu để theo dõi lịch sử và tạo báo cáo tổng hợp. Bất kỳ mục hành động nào từ biên bản họp sẽ tự động tạo thành công việc trong hệ thống.
+            <strong>ℹ️ Thông tin:</strong> Báo cáo được lưu trữ trong cơ sở dữ liệu để theo dõi lịch sử và tạo báo cáo tổng hợp. Bất kỳ mục hành động nào từ biên bản họp sẽ tự động tạo thành công việc trong hệ thống.
           </p>
         </CardContent>
       </Card>
