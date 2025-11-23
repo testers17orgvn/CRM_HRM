@@ -16,6 +16,7 @@ import { Plus, Filter, X, Loader2 } from 'lucide-react';
 import { useTaskBoard, Task, Field, TaskStatus } from '@/hooks/use-task-board';
 import { EnhancedTaskCard } from './EnhancedTaskCard';
 import { FieldManager } from './FieldManager';
+import { TaskDetailDialog } from './TaskDetailDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -25,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { supabase } from '@/integrations/supabase/client';
 
 interface EnhancedTaskBoardProps {
   teamId: string;
