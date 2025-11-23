@@ -289,6 +289,18 @@ export const EnhancedTaskBoard = ({
         </TabsContent>
       </Tabs>
 
+      {/* Task Detail Dialog */}
+      <TaskDetailDialog
+        open={isTaskDetailOpen}
+        onOpenChange={setIsTaskDetailOpen}
+        task={selectedTask}
+        statuses={sortedStatuses}
+        fields={fields}
+        users={users}
+        onUpdate={handleTaskUpdate}
+        onDelete={deleteTask}
+      />
+
       {/* Create Task Dialog */}
       <CreateTaskDialog
         open={isCreateTaskOpen}
