@@ -270,7 +270,7 @@ const DailyAttendanceWidget = () => {
       const hours = (checkoutTime.getTime() - checkinTime.getTime()) / (1000 * 60 * 60);
 
       toast({
-        title: "Ra về thành công",
+        title: "Ra về th��nh công",
         description: `${format(new Date(), 'HH:mm')} - Làm việc: ${hours.toFixed(2)} giờ`,
       });
 
@@ -370,17 +370,32 @@ const DailyAttendanceWidget = () => {
               <p className="text-sm font-semibold text-muted-foreground">Phiên làm việc ({todaySessions.length})</p>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {todaySessions.map((session, idx) => {
-                  const sessionHours = session.check_out
+                  const isValidDate = (dateString: string | null): boolean => {
+                    if (!dateString) return false;
+                    const date = new Date(dateString);
+                    return date instanceof Date && !isNaN(date.getTime());
+                  };
+
+                  const formatDate = (dateString: string | null, formatStr: string) => {
+                    if (!isValidDate(dateString)) return '---';
+                    try {
+                      return format(new Date(dateString), formatStr);
+                    } catch {
+                      return '---';
+                    }
+                  };
+
+                  const sessionHours = session.check_out && isValidDate(session.check_out) && isValidDate(session.check_in)
                     ? (new Date(session.check_out).getTime() - new Date(session.check_in).getTime()) / (1000 * 60 * 60)
                     : null;
-                  
+
                   return (
                     <div key={session.id} className="flex items-center justify-between p-2 rounded-lg bg-background text-xs border">
                       <div className="flex-1">
                         <p className="font-semibold">Phiên #{idx + 1}</p>
                         <p className="text-muted-foreground">
-                          {format(new Date(session.check_in), 'HH:mm')} 
-                          {session.check_out && ` → ${format(new Date(session.check_out), 'HH:mm')}`}
+                          {formatDate(session.check_in, 'HH:mm')}
+                          {session.check_out && ` → ${formatDate(session.check_out, 'HH:mm')}`}
                         </p>
                         {!session.check_out && <Badge className="mt-1">Đang làm</Badge>}
                       </div>
