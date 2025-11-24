@@ -43,22 +43,38 @@ const LeaveHistory = ({ role }: { role: UserRole }) => {
 
             let query = supabase
                 .from('leave_requests')
-                // FIX LỖI 400: Đã giữ cú pháp JOIN để lấy tên người dùng
-                .select(`
-                    *,
-                    profiles!leave_requests_user_id_fkey (first_name, last_name)
-                `)
+                .select(`*`)
                 .order('created_at', { ascending: false });
 
             if (role === 'staff') {
                 query = query.eq('user_id', user.id);
             }
 
-            const { data, error } = await query;
+            const { data: leavesData, error } = await query;
             if (error) throw error;
-            
-            // Ép kiểu mạnh mẽ qua 'unknown'
-            setLeaves((data as unknown as LeaveRequest[]) || []);
+
+            // Fetch profiles separately and merge
+            if (leavesData && leavesData.length > 0) {
+                const userIds = [...new Set(leavesData.map((l: any) => l.user_id))];
+                const { data: profilesData } = await supabase
+                    .from('profiles')
+                    .select('id, first_name, last_name')
+                    .in('id', userIds);
+
+                const profilesMap = new Map();
+                profilesData?.forEach((p: any) => {
+                    profilesMap.set(p.id, { first_name: p.first_name, last_name: p.last_name });
+                });
+
+                const leavesWithProfiles = (leavesData as any[]).map(leave => ({
+                    ...leave,
+                    profiles: profilesMap.get(leave.user_id) || null
+                }));
+
+                setLeaves(leavesWithProfiles as LeaveRequest[]);
+            } else {
+                setLeaves([]);
+            }
         } catch (error) {
             console.error('Lỗi khi lấy dữ liệu nghỉ phép:', error);
             toast({ title: "Lỗi", description: "Không thể tải lịch sử nghỉ phép.", variant: "destructive" });
