@@ -310,7 +310,7 @@ const AdminAttendanceManagement = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
             {/* Search */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">T��m tên/email</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Tìm tên/email</label>
               <Input
                 placeholder="Nhập tên hoặc email..."
                 value={searchText}
