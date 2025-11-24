@@ -383,6 +383,11 @@ export const KanbanBoard = ({ teamId, userId, users }: KanbanBoardProps) => {
     const [columnColor, setColumnColor] = useState('blue');
     const [isLoading, setIsLoading] = useState(false);
 
+    // Search and filter states
+    const [searchQuery, setSearchQuery] = useState('');
+    const [priorityFilter, setPriorityFilter] = useState('all');
+    const [assigneeFilter, setAssigneeFilter] = useState('all');
+
     const handleCreateColumn = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!columnName.trim()) {
