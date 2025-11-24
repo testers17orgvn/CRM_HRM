@@ -27,9 +27,9 @@ const TaskList = ({ role }: { role: UserRole }) => {
 
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [assigneeFilter, setAssigneeFilter] = useState<string>("");
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
 
   const fetchTasks = async () => {
     try {
@@ -77,9 +77,9 @@ const TaskList = ({ role }: { role: UserRole }) => {
         task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
 
-      const matchesPriority = priorityFilter === "" || task.priority === priorityFilter;
-      const matchesStatus = statusFilter === "" || task.status === statusFilter;
-      const matchesAssignee = assigneeFilter === "" || task.assignee_id === assigneeFilter;
+      const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
+      const matchesStatus = statusFilter === "all" || task.status === statusFilter;
+      const matchesAssignee = assigneeFilter === "all" || task.assignee_id === assigneeFilter;
 
       return matchesSearch && matchesPriority && matchesStatus && matchesAssignee;
     });
@@ -87,12 +87,12 @@ const TaskList = ({ role }: { role: UserRole }) => {
 
   const clearFilters = () => {
     setSearchQuery("");
-    setPriorityFilter("");
-    setStatusFilter("");
-    setAssigneeFilter("");
+    setPriorityFilter("all");
+    setStatusFilter("all");
+    setAssigneeFilter("all");
   };
 
-  const hasActiveFilters = searchQuery || priorityFilter || statusFilter || assigneeFilter;
+  const hasActiveFilters = searchQuery || priorityFilter !== "all" || statusFilter !== "all" || assigneeFilter !== "all";
 
   if (loading) {
     return <SkeletonTable rows={8} columns={6} />;
@@ -138,7 +138,7 @@ const TaskList = ({ role }: { role: UserRole }) => {
               <SelectValue placeholder="Lọc theo ưu tiên" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tất cả ưu tiên</SelectItem>
+              <SelectItem value="all">Tất cả ưu tiên</SelectItem>
               {uniquePriorities.map(priority => (
                 <SelectItem key={priority} value={priority}>
                   {priority.charAt(0).toUpperCase() + priority.slice(1)}
@@ -153,7 +153,7 @@ const TaskList = ({ role }: { role: UserRole }) => {
               <SelectValue placeholder="Lọc theo trạng thái" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tất cả trạng thái</SelectItem>
+              <SelectItem value="all">Tất cả trạng thái</SelectItem>
               {uniqueStatuses.map(status => (
                 <SelectItem key={status} value={status}>
                   {status.replace('_', ' ').charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
@@ -168,7 +168,7 @@ const TaskList = ({ role }: { role: UserRole }) => {
               <SelectValue placeholder="Lọc theo người được giao" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tất cả người được giao</SelectItem>
+              <SelectItem value="all">Tất cả người được giao</SelectItem>
               {uniqueAssignees.map(assigneeId => (
                 <SelectItem key={assigneeId} value={assigneeId}>
                   ID: {assigneeId.substring(0, 8)}...
