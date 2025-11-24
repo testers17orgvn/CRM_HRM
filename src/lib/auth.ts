@@ -93,7 +93,8 @@ export const signUp = async (email: string, password: string, metadata?: any) =>
         account_status: 'PENDING',
       });
     } catch (profileError) {
-      console.error('Error creating profile:', profileError);
+      const errorMessage = profileError instanceof Error ? profileError.message : String(profileError);
+      console.error('Error creating profile:', errorMessage);
       // Don't return error as user was created successfully
     }
   }
