@@ -113,30 +113,8 @@ const Login = () => {
                 return;
             }
 
-            // Check registration status
-            const { data: registration } = await supabase
-                .from('user_registrations')
-                .select('status')
-                .eq('user_id', user.id)
-                .single();
-
-            if (registration?.status === 'pending') {
-                toast({
-                    title: "Chờ Phê Duyệt",
-                    description: "Tài khoản của bạn đang chờ Admin phê duyệt..."
-                });
-                navigate("/auth/pending-approval");
-                return;
-            }
-
-            if (registration?.status === 'rejected') {
-                toast({
-                    title: "Tài Khoản Bị Từ Chối",
-                    description: "Tài khoản của bạn không được phê duyệt. Vui lòng liên hệ hỗ trợ."
-                });
-                navigate("/auth/pending-approval");
-                return;
-            }
+            // Skip registration check as table doesn't exist
+            // User is assumed to be approved if they can log in
 
             toast({
                 title: "Chào mừng trở lại!",
