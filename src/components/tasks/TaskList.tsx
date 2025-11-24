@@ -54,6 +54,46 @@ const TaskList = ({ role }: { role: UserRole }) => {
     fetchTasks();
   }, []);
 
+  // Get unique values for filters
+  const uniquePriorities = useMemo(() =>
+    [...new Set(tasks.map(t => t.priority))].sort(),
+    [tasks]
+  );
+
+  const uniqueStatuses = useMemo(() =>
+    [...new Set(tasks.map(t => t.status))].sort(),
+    [tasks]
+  );
+
+  const uniqueAssignees = useMemo(() =>
+    [...new Set(tasks.filter(t => t.assignee_id).map(t => t.assignee_id))],
+    [tasks]
+  );
+
+  // Filter tasks based on search and filters
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      const matchesSearch = searchQuery === "" ||
+        task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+
+      const matchesPriority = priorityFilter === "" || task.priority === priorityFilter;
+      const matchesStatus = statusFilter === "" || task.status === statusFilter;
+      const matchesAssignee = assigneeFilter === "" || task.assignee_id === assigneeFilter;
+
+      return matchesSearch && matchesPriority && matchesStatus && matchesAssignee;
+    });
+  }, [tasks, searchQuery, priorityFilter, statusFilter, assigneeFilter]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setPriorityFilter("");
+    setStatusFilter("");
+    setAssigneeFilter("");
+  };
+
+  const hasActiveFilters = searchQuery || priorityFilter || statusFilter || assigneeFilter;
+
   if (loading) {
     return <SkeletonTable rows={8} columns={6} />;
   }
@@ -63,7 +103,7 @@ const TaskList = ({ role }: { role: UserRole }) => {
   };
 
   return (
-    <div className="border rounded-lg">
+    <div className="space-y-4">
       <Table>
         <TableHeader>
           <TableRow>
