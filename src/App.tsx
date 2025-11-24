@@ -39,6 +39,7 @@ const App = () => (
           <Route path="/leave" element={<Leave />} />
           <Route path="/organization" element={<Organization />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
