@@ -14,6 +14,8 @@ export interface UserProfile {
   phone: string | null;
   date_of_birth: string | null;
   annual_leave_balance: number;
+  account_status?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+  created_at?: string;
 }
 
 export const getCurrentUser = async (): Promise<User | null> => {
