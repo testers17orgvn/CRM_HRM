@@ -165,8 +165,8 @@ const Login = () => {
                 first_name: signupFirstName,
                 last_name: signupLastName,
                 phone: signupPhone,
-                department: signupDepartment,
-                employment_status: signupEmploymentStatus
+                department: signupDepartment || null,
+                employment_status: signupEmploymentStatus || null
             });
 
             if (signupError) {
