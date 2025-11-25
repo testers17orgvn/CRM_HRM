@@ -10,29 +10,21 @@ import SalaryManagement from "@/components/organization/SalaryManagement";
 import SalaryStatistics from "@/components/organization/SalaryStatistics";
 
 const Organization = () => {
- // Khởi tạo state role (vai trò) mặc định là 'staff' (nhân viên)
  const [role, setRole] = useState<UserRole>('staff');
+ const [activeSection, setActiveSection] = useState<string>('teams');
 
  useEffect(() => {
-  // Hàm bất đồng bộ để tải vai trò của người dùng
   const loadRole = async () => {
-   // Lấy người dùng hiện tại
    const user = await getCurrentUser();
-   // Nếu không có người dùng, thoát
    if (!user) return;
-   // Lấy vai trò của người dùng dựa trên ID
    const userRole = await getUserRole(user.id);
-   // Cập nhật state role
    setRole(userRole);
   };
-  // Chạy hàm tải vai trò
   loadRole();
- }, []); // Chạy chỉ một lần sau khi render ban đầu
+ }, []);
 
- // Kiểm tra xem người dùng có phải là admin không
  if (role !== 'admin') {
   return (
-   // Hiển thị layout Dashboard
    <DashboardLayout role={role}>
     <div className="text-center py-12">
      <h2 className="text-2xl font-bold">Truy Cập Bị Từ Chối</h2>
@@ -41,6 +33,25 @@ const Organization = () => {
    </DashboardLayout>
   );
  }
+
+ const renderSection = () => {
+  switch (activeSection) {
+   case 'teams':
+    return <TeamsManagement />;
+   case 'users':
+    return <UsersManagement />;
+   case 'shifts':
+    return <ShiftsManagement />;
+   case 'attendance':
+    return <AttendanceManagement />;
+   case 'salary':
+    return <SalaryManagement />;
+   case 'statistics':
+    return <SalaryStatistics />;
+   default:
+    return <TeamsManagement />;
+  }
+ };
 
   return (
     <DashboardLayout role={role}>
