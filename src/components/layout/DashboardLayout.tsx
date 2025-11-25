@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
 
-// --- Định nghĩa kiểu dữ liệu ---
+// --- Định nghĩa ki���u dữ liệu ---
 
 interface CurrentUser { id: string; email?: string | null; }
 interface UserProfile { full_name: string; avatar_url: string | null; }
@@ -33,6 +33,8 @@ interface DashboardLayoutProps {
     role?: UserRole;
     organizationSection?: string;
     onOrganizationSectionChange?: (section: string) => void;
+    tasksSection?: string;
+    onTasksSectionChange?: (section: string) => void;
 }
 
 const DashboardLayout = ({ children, role = 'staff', organizationSection, onOrganizationSectionChange }: DashboardLayoutProps) => {
