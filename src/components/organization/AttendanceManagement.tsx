@@ -155,7 +155,7 @@ const AttendanceManagement = () => {
         setLocationSettings({
           lat: data.office_latitude || "",
           lng: data.office_longitude || "",
-          radius: data.check_in_radius?.toString() || "100"
+          radius: data.check_in_radius_meters?.toString() || "100"
         });
       }
     } catch (error) {
