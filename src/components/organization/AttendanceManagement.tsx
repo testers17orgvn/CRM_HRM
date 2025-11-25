@@ -285,7 +285,7 @@ const AttendanceManagement = () => {
           team_id: selectedTeamId,
           office_latitude: parseFloat(locationSettings.lat) || null,
           office_longitude: parseFloat(locationSettings.lng) || null,
-          check_in_radius: parseInt(locationSettings.radius) || 100
+          check_in_radius_meters: parseInt(locationSettings.radius) || 100
         }, { onConflict: 'team_id' });
 
       if (error) throw error;
