@@ -1,18 +1,24 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getCurrentUser } from "@/lib/auth";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Download, FileText } from "lucide-react";
-import { UserRole } from "@/lib/auth";
+import { Download, FileSpreadsheet, Eye } from "lucide-react";
+import { format } from "date-fns";
+import { SkeletonTable } from "@/components/ui/skeleton-table";
+import { SkeletonStatCard } from "@/components/ui/skeleton-card";
+import * as XLSX from 'xlsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
-interface MyPayslipsProps {
-  userId: string;
-  role: UserRole;
-}
-
-interface Payslip {
+interface Salary {
   id: string;
   user_id: string;
   base_salary: number;
@@ -23,191 +29,380 @@ interface Payslip {
   net_salary: number;
   pay_period_start: string;
   pay_period_end: string;
-  payment_date: string;
   payment_status: string;
-  notes: string;
+  notes: string | null;
   created_at: string;
+  updated_at: string;
 }
 
-export default function MyPayslips({ userId, role }: MyPayslipsProps) {
-  const { toast } = useToast();
-  const [payslips, setPayslips] = useState<Payslip[]>([]);
+interface PayslipDetails {
+  salary: Salary;
+  userEmail: string;
+  userName: string;
+}
+
+const MyPayslips = () => {
+  const [payslips, setPayslips] = useState<Salary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [totalSalary, setTotalSalary] = useState(0);
+  const [selectedPayslip, setSelectedPayslip] = useState<PayslipDetails | null>(null);
+  const [userEmail, setUserEmail] = useState("");
+  const [userName, setUserName] = useState("");
+  const { toast } = useToast();
 
-  useEffect(() => {
-    if (!userId) return;
-    loadMyPayslips();
-  }, [userId]);
-
-  const loadMyPayslips = async () => {
+  const fetchPayslips = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('salaries')
-        .select('*')
-        .eq('user_id', userId)
-        .order('pay_period_start', { ascending: false });
 
-      if (error) throw error;
-
-      if (data) {
-        setPayslips(data);
-        const total = data.reduce((sum, p) => sum + (p.net_salary || 0), 0);
-        setTotalSalary(total);
+      // Get current user
+      const user = await getCurrentUser();
+      if (!user) {
+        toast({
+          title: "Lỗi",
+          description: "Không thể xác định người dùng hiện tại.",
+          variant: "destructive",
+        });
+        return;
       }
+
+      // Fetch user profile
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, email, full_name")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      if (profileData) {
+        setUserEmail(profileData.email || "");
+        setUserName(profileData.full_name || "");
+      }
+
+      // Fetch user's own salaries
+      const { data: salaryData, error: salaryError } = await supabase
+        .from("salaries")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("pay_period_start", { ascending: false });
+
+      if (salaryError) throw salaryError;
+
+      setPayslips(salaryData || []);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Không thể tải phiếu lương';
       toast({
+        title: "Lỗi Tải Dữ Liệu",
+        description: (error as Error).message,
         variant: "destructive",
-        title: "Lỗi",
-        description: errorMessage
       });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
-  const handleDownloadPDF = (payslip: Payslip) => {
-    // TODO: Implement PDF generation
-    toast({
-      title: "Thông báo",
-      description: "Tính năng tải PDF sẽ được cập nhật sớm"
-    });
-  };
+  useEffect(() => {
+    fetchPayslips();
+  }, [fetchPayslips]);
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND'
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
     }).format(value);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('vi-VN');
+  const getPaymentStatusDisplay = (status: string) => {
+    const statusMap: { [key: string]: { label: string; color: string } } = {
+      pending: { label: "Chờ xử lý", color: "text-yellow-600" },
+      paid: { label: "Đã thanh toán", color: "text-green-600" },
+      failed: { label: "Thất bại", color: "text-red-600" },
+    };
+    const displayStatus = statusMap[status] || { label: status, color: "text-gray-600" };
+    return <span className={displayStatus.color}>{displayStatus.label}</span>;
+  };
+
+  const exportToExcel = () => {
+    const exportData = payslips.map((salary) => ({
+      "Kỳ Lương Từ": format(new Date(salary.pay_period_start), "yyyy-MM-dd"),
+      "Kỳ Lương Đến": format(new Date(salary.pay_period_end), "yyyy-MM-dd"),
+      "Lương Cơ Bản": formatCurrency(salary.base_salary),
+      "Phụ Cấp": formatCurrency(salary.allowances),
+      "Thưởng": formatCurrency(salary.bonus),
+      "Khấu Trừ": formatCurrency(salary.deductions),
+      "Thuế": formatCurrency(salary.tax_amount),
+      "Lương Ròng": formatCurrency(salary.net_salary),
+      "Trạng Thái": salary.payment_status,
+      "Ghi Chú": salary.notes || "N/A",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Phiếu Lương");
+
+    ws["!cols"] = [
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 25 },
+    ];
+
+    XLSX.writeFile(wb, `Phieu_Luong_${userName}_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+
+    toast({
+      title: "Thành Công",
+      description: "Phiếu lương đã được xuất thành công",
+    });
+  };
+
+  const exportToCSV = () => {
+    const exportData = payslips.map((salary) => ({
+      "Kỳ Lương Từ": format(new Date(salary.pay_period_start), "yyyy-MM-dd"),
+      "Kỳ Lương Đến": format(new Date(salary.pay_period_end), "yyyy-MM-dd"),
+      "Lương Cơ Bản": salary.base_salary,
+      "Phụ Cấp": salary.allowances,
+      "Thưởng": salary.bonus,
+      "Khấu Trừ": salary.deductions,
+      "Thuế": salary.tax_amount,
+      "Lương Ròng": salary.net_salary,
+      "Trạng Thái": salary.payment_status,
+      "Ghi Chú": salary.notes || "N/A",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Phieu_Luong_${userName}_${format(new Date(), "yyyy-MM-dd")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Thành Công",
+      description: "Phiếu lương đã được xuất thành công",
+    });
   };
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-12">
-        <p className="text-muted-foreground">Đang tải phiếu lương...</p>
+      <div className="space-y-6">
+        <SkeletonStatCard />
+        <SkeletonTable rows={8} columns={9} />
       </div>
     );
   }
 
+  const totalNetSalary = payslips.reduce((sum, p) => sum + p.net_salary, 0);
+
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tổng Lương Ròng</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalSalary)}</div>
-            <p className="text-xs text-muted-foreground mt-2">{payslips.length} tháng</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Lương Cơ Bản Trung Bình</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {payslips.length > 0 
-                ? formatCurrency(payslips.reduce((sum, p) => sum + p.base_salary, 0) / payslips.length)
-                : formatCurrency(0)
-              }
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Phiếu Lương Gần Nhất</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {payslips.length > 0 ? formatCurrency(payslips[0].net_salary) : "—"}
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {payslips.length > 0 ? `Tháng ${new Date(payslips[0].pay_period_start).toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })}` : "Chưa có"}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Payslips Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Chi tiết Phiếu Lương</CardTitle>
+      {/* Summary Card */}
+      <Card className="shadow-medium overflow-hidden relative border-l-4 border-l-primary">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div>
+            <CardTitle className="text-sm font-medium">Tổng Lương Ròng</CardTitle>
+            <CardDescription className="mt-1">{userName}</CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
-          {payslips.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Chưa có phiếu lương nào</p>
+          <div className="text-3xl font-bold">{formatCurrency(totalNetSalary)}</div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Tổng từ {payslips.length} phiếu lương
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Payslips Table */}
+      <Card className="shadow-strong">
+        <CardHeader>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl">Phiếu Lương Cá Nhân</CardTitle>
+              <CardDescription>Danh sách tất cả phiếu lương của bạn</CardDescription>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={exportToCSV}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Xuất CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportToExcel}>
+                <Download className="h-4 w-4 mr-2" />
+                Xuất Excel
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-lg overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Kỳ Lương</TableHead>
+                  <TableHead>Lương Cơ Bản</TableHead>
+                  <TableHead>Phụ Cấp</TableHead>
+                  <TableHead>Thưởng</TableHead>
+                  <TableHead>Khấu Trừ</TableHead>
+                  <TableHead>Thuế</TableHead>
+                  <TableHead>Lương Ròng</TableHead>
+                  <TableHead>Trạng Thái</TableHead>
+                  <TableHead>Hành Động</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payslips.length === 0 ? (
                   <TableRow>
-                    <TableHead>Kỳ Lương</TableHead>
-                    <TableHead className="text-right">Lương Cơ Bản</TableHead>
-                    <TableHead className="text-right">Phụ Cấp</TableHead>
-                    <TableHead className="text-right">Thưởng</TableHead>
-                    <TableHead className="text-right">Khấu Trừ</TableHead>
-                    <TableHead className="text-right">Thuế</TableHead>
-                    <TableHead className="text-right">Lương Ròng</TableHead>
-                    <TableHead>Trạng Thái</TableHead>
-                    <TableHead>Hành Động</TableHead>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                      Chưa có phiếu lương nào
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payslips.map((payslip) => (
+                ) : (
+                  payslips.map((payslip) => (
                     <TableRow key={payslip.id}>
-                      <TableCell>
-                        <div className="font-medium">
-                          {formatDate(payslip.pay_period_start)} - {formatDate(payslip.pay_period_end)}
-                        </div>
+                      <TableCell className="font-medium">
+                        {format(new Date(payslip.pay_period_start), "MM/yyyy")}
                       </TableCell>
-                      <TableCell className="text-right">{formatCurrency(payslip.base_salary)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(payslip.allowances)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(payslip.bonus)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(payslip.deductions)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(payslip.tax_amount)}</TableCell>
-                      <TableCell className="text-right font-bold">{formatCurrency(payslip.net_salary)}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          payslip.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
-                          payslip.payment_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {payslip.payment_status === 'paid' ? 'Đã Thanh Toán' :
-                           payslip.payment_status === 'pending' ? 'Chờ Xử Lý' : 'Thất Bại'}
-                        </span>
+                      <TableCell>{formatCurrency(payslip.base_salary)}</TableCell>
+                      <TableCell>{formatCurrency(payslip.allowances)}</TableCell>
+                      <TableCell className="text-success">{formatCurrency(payslip.bonus)}</TableCell>
+                      <TableCell className="text-destructive">
+                        {formatCurrency(payslip.deductions)}
                       </TableCell>
+                      <TableCell>{formatCurrency(payslip.tax_amount)}</TableCell>
+                      <TableCell className="font-bold">{formatCurrency(payslip.net_salary)}</TableCell>
+                      <TableCell>{getPaymentStatusDisplay(payslip.payment_status)}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDownloadPDF(payslip)}
-                          className="gap-2"
-                        >
-                          <Download className="h-4 w-4" />
-                          <span className="hidden sm:inline">Tải</span>
-                        </Button>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedPayslip({
+                                  salary: payslip,
+                                  userEmail,
+                                  userName,
+                                });
+                              }}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>Chi Tiết Phiếu Lương</DialogTitle>
+                            </DialogHeader>
+                            {selectedPayslip && (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <p className="text-sm font-medium text-muted-foreground">
+                                      Tên Nhân Viên
+                                    </p>
+                                    <p className="text-lg font-semibold">{selectedPayslip.userName}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-muted-foreground">Email</p>
+                                    <p className="text-lg">{selectedPayslip.userEmail}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-muted-foreground">
+                                      Kỳ Lương Từ
+                                    </p>
+                                    <p className="text-lg">
+                                      {format(new Date(selectedPayslip.salary.pay_period_start), "dd/MM/yyyy")}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-muted-foreground">
+                                      Kỳ Lương Đến
+                                    </p>
+                                    <p className="text-lg">
+                                      {format(new Date(selectedPayslip.salary.pay_period_end), "dd/MM/yyyy")}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="border-t pt-4">
+                                  <h3 className="font-semibold mb-4">Chi Tiết Lương</h3>
+                                  <div className="space-y-3">
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Lương Cơ Bản</span>
+                                      <span className="font-semibold">
+                                        {formatCurrency(selectedPayslip.salary.base_salary)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Phụ Cấp</span>
+                                      <span className="font-semibold text-success">
+                                        +{formatCurrency(selectedPayslip.salary.allowances)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Thưởng</span>
+                                      <span className="font-semibold text-success">
+                                        +{formatCurrency(selectedPayslip.salary.bonus)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Khấu Trừ</span>
+                                      <span className="font-semibold text-destructive">
+                                        -{formatCurrency(selectedPayslip.salary.deductions)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Thuế</span>
+                                      <span className="font-semibold text-destructive">
+                                        -{formatCurrency(selectedPayslip.salary.tax_amount)}
+                                      </span>
+                                    </div>
+                                    <div className="border-t pt-3 flex justify-between">
+                                      <span className="font-semibold">Lương Ròng</span>
+                                      <span className="font-bold text-lg text-success">
+                                        {formatCurrency(selectedPayslip.salary.net_salary)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="border-t pt-4">
+                                  <div>
+                                    <p className="text-sm font-medium text-muted-foreground">
+                                      Trạng Thái
+                                    </p>
+                                    <div className="mt-2">
+                                      {getPaymentStatusDisplay(selectedPayslip.salary.payment_status)}
+                                    </div>
+                                  </div>
+                                  {selectedPayslip.salary.notes && (
+                                    <div className="mt-4">
+                                      <p className="text-sm font-medium text-muted-foreground">
+                                        Ghi Chú
+                                      </p>
+                                      <p className="text-sm mt-1">{selectedPayslip.salary.notes}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </DialogContent>
+                        </Dialog>
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
   );
-}
+};
+
+export default MyPayslips;

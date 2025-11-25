@@ -68,6 +68,7 @@ const DashboardLayout = ({ children, role = 'staff', organizationSection, onOrga
         { icon: Clock, label: "Chấm công", path: "/attendance" },
         { icon: ListChecks, label: "Công việc", path: "/tasks" },
         { icon: Calendar, label: "Phòng họp", path: "/meeting-rooms" },
+        { icon: DollarSign, label: "Lương Thưởng", path: "/payroll" },
     ];
 
     const menuItems = [...baseMenuItems];

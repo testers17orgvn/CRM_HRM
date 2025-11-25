@@ -1,818 +1,751 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { getCurrentUser, getUserRole } from "@/lib/auth"; // Giả định getUserProfile/updatePassword được thay thế bằng hàm supabase trực tiếp
+import { UserRole } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { getCurrentUser, getUserRole, updatePassword } from "@/lib/auth";
-import { supabase } from "@/integrations/supabase/client";
-import { 
-  Settings, Bell, Eye, Lock, Palette, Save, LogOut, Download, 
-  AlertTriangle, Clock, Smartphone, MapPin, CheckCircle2, X,
-  Mail, Smartphone as SmartphoneIcon, Globe, Calendar, Home
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import {
+    Lock, Bell, Moon, AlertCircle, CheckCircle2,
+    Palette, Download, X, Clock, Smartphone as SmartphoneIcon, MapPin, LogOut, Eye,
+    AlertTriangle
 } from "lucide-react";
-import { UserRole } from "@/lib/auth";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+
+interface NotificationSettings {
+    email_new_tasks: boolean;
+    email_approvals: boolean;
+    email_daily_reports: boolean;
+    in_app_notifications: boolean;
+}
+
+// Giả định bảng profiles có cột: notification_settings (JSONB) và theme_preference (TEXT)
+// Giả định getCurrentUser trả về User object (có id và email)
 
 const SettingsPage = () => {
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<UserRole>('staff');
-  const [user, setUser] = useState<any>(null);
+    const navigate = useNavigate();
+    const { toast } = useToast();
+    const [role, setRole] = useState<UserRole>('staff');
+    const [loading, setLoading] = useState(true);
+    const [userId, setUserId] = useState<string>('');
+    const [userEmail, setUserEmail] = useState<string>('');
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
-  // Dialog states
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [show2FADialog, setShow2FADialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    // --- Password & Security State ---
+    const [passwordData, setPasswordData] = useState({
+        oldPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+    });
+    const [passwordLoading, setPasswordLoading] = useState(false);
+    const [passwordError, setPasswordError] = useState('');
 
-  // Form states
-  const [passwordForm, setPasswordForm] = useState({
-    oldPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  });
+    // --- Notifications State ---
+    const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
+        email_new_tasks: true,
+        email_approvals: true,
+        email_daily_reports: true,
+        in_app_notifications: true
+    });
+    const [notificationLoading, setNotificationLoading] = useState(false);
 
-  const [settings, setSettings] = useState({
-    theme: localStorage.getItem('theme') || 'system',
-    language: localStorage.getItem('language') || 'vi',
-    timezone: localStorage.getItem('timezone') || 'Asia/Ho_Chi_Minh',
-    defaultPage: localStorage.getItem('defaultPage') || 'dashboard',
-    notifications: JSON.parse(localStorage.getItem('notificationSettings') || '{"email": true, "push": true, "inApp": true}'),
-    notificationEvents: JSON.parse(localStorage.getItem('notificationEvents') || '{"taskAssigned": true, "taskUpdated": true, "comments": true, "deadlineReminder": true}'),
-    quietHours: JSON.parse(localStorage.getItem('quietHours') || '{"enabled": false, "start": "22:00", "end": "08:00"}'),
-    twoFAEnabled: localStorage.getItem('twoFAEnabled') === 'true',
-    securityAlerts: JSON.parse(localStorage.getItem('securityAlerts') || '{"newDevice": true, "newLocation": true}'),
-  });
+    // --- Theme State ---
+    const [themePreference, setThemePreference] = useState<'light' | 'dark' | 'system'>('system');
+    const [themeLoading, setThemeLoading] = useState(false);
 
-  // Mock active sessions
-  const [activeSessions] = useState([
-    { id: 1, device: 'Chrome - Windows 10', location: 'Hà Nội, VN', lastActivity: '2 phút trước', current: true },
-    { id: 2, device: 'Safari - iPhone 13', location: 'Hà Nội, VN', lastActivity: '2 giờ trước', current: false },
-  ]);
+    // Mock Active Sessions (Lưu ý: Logic thực tế phải dùng API của Supabase/Auth)
+    const [activeSessions] = useState([
+        { id: 1, device: 'Chrome - Windows 10', location: 'Hà Nội, VN', lastActivity: '2 phút trước', current: true },
+        { id: 2, device: 'Safari - iPhone 13', location: 'TP.HCM, VN', lastActivity: '2 giờ trước', current: false },
+    ]);
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const currentUser = await getCurrentUser();
-        if (!currentUser) {
-          navigate('/auth/login');
-          return;
+
+    // Apply theme to DOM
+    const applyTheme = (theme: 'light' | 'dark' | 'system') => {
+        const root = document.documentElement;
+        root.classList.remove('light', 'dark');
+
+        if (theme === 'system') {
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            root.classList.toggle('dark', prefersDark);
+        } else {
+            root.classList.add(theme);
         }
-
-        setUser(currentUser);
-        const userRole = await getUserRole(currentUser.id);
-        setRole(userRole);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error:', error);
-        navigate('/auth/login');
-      }
+        localStorage.setItem('theme', theme);
     };
 
-    checkAuth();
-  }, [navigate]);
 
-  // ===== SECURITY HANDLERS =====
-  const handleChangePassword = async () => {
-    if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-      toast({ variant: "destructive", title: "Lỗi", description: "Vui lòng điền tất cả các trường." });
-      return;
+    // Load user data and settings
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                setLoading(true);
+
+                // Get current user
+                const user = await getCurrentUser();
+                if (!user) {
+                    navigate('/auth/login');
+                    return;
+                }
+
+                setUserId(user.id);
+                setUserEmail(user.email || '');
+
+                // Get user role
+                const userRole = await getUserRole(user.id);
+                setRole(userRole);
+
+                // Fetch profile with notification settings and theme preference
+                const { data: profileData, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('notification_settings, theme_preference')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profileError && profileError.code !== 'PGRST116') throw profileError; // PGRST116: no rows found
+
+                if (profileData) {
+                    // Load notifications from DB
+                    if (profileData.notification_settings) {
+                        setNotificationSettings(profileData.notification_settings as NotificationSettings);
+                    }
+                    // Load theme from DB
+                    if (profileData.theme_preference) {
+                        const dbTheme = profileData.theme_preference as 'light' | 'dark' | 'system';
+                        setThemePreference(dbTheme);
+                        applyTheme(dbTheme);
+                    }
+                }
+            } catch (error) {
+                toast({
+                    title: "Lỗi Tải Dữ Liệu",
+                    description: (error as Error).message,
+                    variant: "destructive",
+                });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadSettings();
+    }, [navigate, toast]);
+
+
+    // Handle password change
+    const handlePasswordChange = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setPasswordError('');
+
+        // Validation
+        if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+            setPasswordError('Vui lòng nhập đầy đủ thông tin');
+            return;
+        }
+
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            setPasswordError('Mật khẩu mới không khớp');
+            return;
+        }
+
+        if (passwordData.newPassword.length < 6) {
+            setPasswordError('Mật khẩu mới phải tối thiểu 6 ký tự');
+            return;
+        }
+
+        try {
+            setPasswordLoading(true);
+
+            // 1. Re-authenticate (Sign in with old password) to verify credentials
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+                email: userEmail,
+                password: passwordData.oldPassword
+            });
+
+            if (signInError) {
+                // IMPORTANT: In Supabase, updatePassword doesn't need the old password if the user is authenticated. 
+                // But signing in first ensures the old password is correct.
+                setPasswordError('Mật khẩu cũ không chính xác');
+                return;
+            }
+
+            // 2. Update password
+            const { error: updateError } = await supabase.auth.updateUser({
+                password: passwordData.newPassword
+            });
+
+            if (updateError) throw updateError;
+
+            toast({
+                title: "Thành Công",
+                description: "Mật khẩu của bạn đã được thay đổi",
+            });
+
+            setPasswordData({
+                oldPassword: '',
+                newPassword: '',
+                confirmPassword: ''
+            });
+        } catch (error) {
+            setPasswordError((error as Error).message);
+            toast({
+                title: "Lỗi",
+                description: (error as Error).message,
+                variant: "destructive",
+            });
+        } finally {
+            setPasswordLoading(false);
+        }
+    };
+
+    // Handle notification settings change
+    const handleNotificationChange = async (key: keyof NotificationSettings) => {
+        const updatedSettings = {
+            ...notificationSettings,
+            [key]: !notificationSettings[key]
+        };
+
+        try {
+            setNotificationLoading(true);
+
+            const { error } = await supabase
+                .from('profiles')
+                .update({ notification_settings: updatedSettings as any }) // 'any' to bypass JSONB type warning if needed
+                .eq('id', userId);
+
+            if (error) throw error;
+
+            setNotificationSettings(updatedSettings);
+
+            toast({
+                title: "Thành Công",
+                description: "Cài đặt thông báo đã được cập nhật",
+            });
+        } catch (error) {
+            toast({
+                title: "Lỗi",
+                description: (error as Error).message,
+                variant: "destructive",
+            });
+        } finally {
+            setNotificationLoading(false);
+        }
+    };
+
+    // Handle theme change
+    const handleThemeChange = async (newTheme: 'light' | 'dark' | 'system') => {
+        try {
+            setThemeLoading(true);
+
+            // Update in database
+            const { error } = await supabase
+                .from('profiles')
+                .update({ theme_preference: newTheme })
+                .eq('id', userId);
+
+            if (error) throw error;
+
+            // Apply theme and update state/localStorage
+            setThemePreference(newTheme);
+            applyTheme(newTheme);
+
+            toast({
+                title: "Thành Công",
+                description: "Chế độ giao diện đã được thay đổi",
+            });
+        } catch (error) {
+            toast({
+                title: "Lỗi",
+                description: (error as Error).message,
+                variant: "destructive",
+            });
+        } finally {
+            setThemeLoading(false);
+        }
+    };
+
+    // Handle Delete Account Request
+    const handleDeleteAccount = async () => {
+        if (deleteConfirmText !== 'Xóa tài khoản của tôi') {
+            toast({ variant: "destructive", title: "Lỗi", description: "Vui lòng xác nhận bằng cách nhập đúng văn bản." });
+            return;
+        }
+
+        try {
+            // Logic thực tế: Gửi yêu cầu xóa hoặc cập nhật trạng thái profiles.account_status = 'DELETE_REQUESTED'
+            // Việc xóa chính thức sẽ do Admin/HR thực hiện.
+
+            // Giả lập gửi yêu cầu:
+            const { error } = await supabase
+                .from('profiles')
+                .update({ account_status: 'DELETE_REQUESTED' })
+                .eq('id', userId);
+
+            if (error) throw error;
+
+            toast({ title: "Yêu cầu đã gửi", description: "Yêu cầu xóa tài khoản của bạn sẽ được xem xét bởi Admin." });
+            setShowDeleteDialog(false);
+            setDeleteConfirmText('');
+            await supabase.auth.signOut();
+            navigate('/auth/login');
+        } catch (error) {
+            toast({ variant: "destructive", title: "Lỗi", description: "Không thể gửi yêu cầu xóa tài khoản." });
+        }
+    };
+
+    // --- Helper Functions (Mock) ---
+    const handleSignOutDevice = (sessionId: number) => {
+        // Logic thực tế: Gọi Supabase API để vô hiệu hóa session
+        toast({ title: "Thành công", description: `Thiết bị ID ${sessionId} đã được đăng xuất.` });
+    };
+
+    const handleSignOutEverywhere = async () => {
+        await supabase.auth.signOut({ scope: 'global' });
+        navigate('/auth/login');
+        toast({ title: "Thành công", description: "Bạn đã được đăng xuất khỏi tất cả thiết bị." });
+    };
+    
+    // --- Render ---
+
+    if (loading) {
+        return (
+            <DashboardLayout role={role}>
+                <div className="text-center py-12">
+                    <p className="text-muted-foreground">Đang tải cài đặt...</p>
+                </div>
+            </DashboardLayout>
+        );
     }
 
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast({ variant: "destructive", title: "Lỗi", description: "Mật khẩu mới không khớp." });
-      return;
-    }
-
-    if (passwordForm.newPassword.length < 6) {
-      toast({ variant: "destructive", title: "Lỗi", description: "Mật khẩu phải có ít nhất 6 ký tự." });
-      return;
-    }
-
-    try {
-      const { error } = await updatePassword(passwordForm.newPassword);
-      if (error) throw error;
-
-      toast({ title: "Thành công", description: "Mật khẩu của bạn đã được thay đổi." });
-      setShowPasswordDialog(false);
-      setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (error) {
-      toast({ variant: "destructive", title: "Lỗi", description: (error as Error).message });
-    }
-  };
-
-  const handleToggle2FA = () => {
-    if (!settings.twoFAEnabled) {
-      setShow2FADialog(true);
-    } else {
-      setSettings(prev => ({ ...prev, twoFAEnabled: false }));
-      localStorage.setItem('twoFAEnabled', 'false');
-      toast({ title: "Thành công", description: "Xác thực hai yếu tố đã được tắt." });
-    }
-  };
-
-  const handleEnable2FA = () => {
-    setSettings(prev => ({ ...prev, twoFAEnabled: true }));
-    localStorage.setItem('twoFAEnabled', 'true');
-    toast({ title: "Thành công", description: "Xác thực hai yếu tố đã được bật." });
-    setShow2FADialog(false);
-  };
-
-  const handleSignOutDevice = (sessionId: number) => {
-    toast({ title: "Thành công", description: "Thiết bị đã được đăng xuất." });
-  };
-
-  const handleSignOutEverywhere = () => {
-    toast({ title: "Thành công", description: "Bạn đã được đăng xuất khỏi tất cả thiết bị." });
-  };
-
-  // ===== NOTIFICATION HANDLERS =====
-  const handleThemeChange = (value: string) => {
-    setSettings(prev => ({ ...prev, theme: value }));
-    localStorage.setItem('theme', value);
-  };
-
-  const handleLanguageChange = (value: string) => {
-    setSettings(prev => ({ ...prev, language: value }));
-    localStorage.setItem('language', value);
-  };
-
-  const handleTimezoneChange = (value: string) => {
-    setSettings(prev => ({ ...prev, timezone: value }));
-    localStorage.setItem('timezone', value);
-  };
-
-  const handleDefaultPageChange = (value: string) => {
-    setSettings(prev => ({ ...prev, defaultPage: value }));
-    localStorage.setItem('defaultPage', value);
-  };
-
-  const handleNotificationChannelToggle = (channel: 'email' | 'push' | 'inApp') => {
-    setSettings(prev => ({
-      ...prev,
-      notifications: { ...prev.notifications, [channel]: !prev.notifications[channel] }
-    }));
-    localStorage.setItem('notificationSettings', JSON.stringify({
-      ...settings.notifications,
-      [channel]: !settings.notifications[channel]
-    }));
-  };
-
-  const handleNotificationEventToggle = (event: 'taskAssigned' | 'taskUpdated' | 'comments' | 'deadlineReminder') => {
-    setSettings(prev => ({
-      ...prev,
-      notificationEvents: { ...prev.notificationEvents, [event]: !prev.notificationEvents[event] }
-    }));
-    localStorage.setItem('notificationEvents', JSON.stringify({
-      ...settings.notificationEvents,
-      [event]: !settings.notificationEvents[event]
-    }));
-  };
-
-  const handleQuietHoursToggle = () => {
-    setSettings(prev => ({
-      ...prev,
-      quietHours: { ...prev.quietHours, enabled: !prev.quietHours.enabled }
-    }));
-    localStorage.setItem('quietHours', JSON.stringify({
-      ...settings.quietHours,
-      enabled: !settings.quietHours.enabled
-    }));
-  };
-
-  const handleSecurityAlertToggle = (alert: 'newDevice' | 'newLocation') => {
-    setSettings(prev => ({
-      ...prev,
-      securityAlerts: { ...prev.securityAlerts, [alert]: !prev.securityAlerts[alert] }
-    }));
-    localStorage.setItem('securityAlerts', JSON.stringify({
-      ...settings.securityAlerts,
-      [alert]: !settings.securityAlerts[alert]
-    }));
-  };
-
-  // ===== DATA MANAGEMENT HANDLERS =====
-  const handleExportData = async () => {
-    try {
-      const dataToExport = {
-        user: user,
-        exportDate: new Date().toISOString(),
-        settings: settings,
-      };
-
-      const dataStr = JSON.stringify(dataToExport, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(dataBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `my-data-${Date.now()}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      toast({ title: "Thành công", description: "Dữ liệu của bạn đã được tải xuống." });
-    } catch (error) {
-      toast({ variant: "destructive", title: "Lỗi", description: "Không thể tải xuống dữ liệu." });
-    }
-  };
-
-  const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== 'Xóa tài khoản của tôi') {
-      toast({ variant: "destructive", title: "Lỗi", description: "Vui lòng xác nhận bằng cách nhập đúng văn bản." });
-      return;
-    }
-
-    try {
-      toast({ title: "Yêu cầu đã gửi", description: "Yêu cầu xóa tài khoản của bạn sẽ được xem xét bởi Admin." });
-      setShowDeleteDialog(false);
-      setDeleteConfirmText('');
-    } catch (error) {
-      toast({ variant: "destructive", title: "Lỗi", description: "Không thể xóa tài khoản." });
-    }
-  };
-
-  if (loading) {
+    // Các phần tử UI nâng cao (Session/2FA) được tích hợp trong tab Security
     return (
-      <DashboardLayout role={role}>
-        <div className="p-6 text-center">Đang tải...</div>
-      </DashboardLayout>
-    );
-  }
-
-  return (
-    <DashboardLayout role={role}>
-      <div className="space-y-8 pb-10 max-w-5xl">
-        {/* Header */}
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3">
-            <Settings className="h-8 w-8 text-primary" />
-            Cài Đặt
-          </h1>
-          <p className="text-muted-foreground mt-2">Quản lý bảo mật, thông báo, giao diện và dữ liệu cá nhân của bạn</p>
-        </div>
-
-        {/* ===== 1. SECURITY & LOGIN ===== */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Lock className="h-6 w-6 text-primary" />
-            <h2 className="text-2xl font-bold">🔒 Bảo Mật & Đăng Nhập</h2>
-          </div>
-
-          {/* Change Password */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Thay Đổi Mật Khẩu</CardTitle>
-              <CardDescription>Cập nhật mật khẩu của tài khoản</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => setShowPasswordDialog(true)}
-              >
-                <Eye className="mr-2 h-4 w-4" />
-                Thay Đổi Mật Khẩu
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Two-Factor Authentication */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Xác Thực Hai Yếu Tố (2FA)</CardTitle>
-              <CardDescription>Tăng cường bảo mật tài khoản với mã bảo mật bổ sung</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium">Trạng thái 2FA</p>
-                  <p className="text-sm text-muted-foreground">
-                    {settings.twoFAEnabled ? '✓ Đã bật' : '✗ Chưa bật'}
-                  </p>
+        <DashboardLayout role={role}>
+            <div className="space-y-6 animate-fade-in pb-20 md:pb-6 max-w-4xl">
+                <div className="mb-6">
+                    <h1 className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent text-2xl md:text-3xl lg:text-4xl">
+                        Cài Đặt
+                    </h1>
+                    <p className="text-muted-foreground mt-1 md:mt-2 text-sm md:text-base">
+                        Quản lý tài khoản, bảo mật, thông báo và giao diện
+                    </p>
                 </div>
-                <Switch
-                  checked={settings.twoFAEnabled}
-                  onCheckedChange={handleToggle2FA}
-                />
-              </div>
-              {settings.twoFAEnabled && (
-                <Alert>
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertDescription>
-                    Xác thực hai yếu tố đã được bật. Bạn sẽ được yêu cầu nhập mã từ ứng dụng authenticator khi đăng nhập.
-                  </AlertDescription>
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Active Sessions */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Quản Lý Thiết Bị & Phiên Hoạt Động</CardTitle>
-              <CardDescription>Xem và quản lý các thiết bị đang đăng nhập</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {activeSessions.map(session => (
-                <div key={session.id} className="p-3 border rounded-lg space-y-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <SmartphoneIcon className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="font-medium">{session.device}</p>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <MapPin className="h-3 w-3" /> {session.location}
-                        </p>
-                      </div>
+                <Tabs defaultValue="security" className="w-full">
+                    <TabsList className="grid w-full grid-cols-3 md:grid-cols-4">
+                        <TabsTrigger value="security" className="flex items-center gap-2">
+                            <Lock className="h-4 w-4" />
+                            <span className="hidden sm:inline">Bảo Mật</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="notifications" className="flex items-center gap-2">
+                            <Bell className="h-4 w-4" />
+                            <span className="hidden sm:inline">Thông Báo</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="theme" className="flex items-center gap-2">
+                            <Palette className="h-4 w-4" />
+                            <span className="hidden sm:inline">Giao Diện</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="data" className="flex items-center gap-2">
+                            <Download className="h-4 w-4" />
+                            <span className="hidden sm:inline">Dữ Liệu</span>
+                        </TabsTrigger>
+                    </TabsList>
+
+                    {/* ===== 1. PASSWORD & SECURITY ===== */}
+                    <TabsContent value="security" className="mt-6 space-y-6">
+                        {/* Change Password Card */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Lock className="h-5 w-5" /> Mật Khẩu & Đăng Nhập
+                                </CardTitle>
+                                <CardDescription>
+                                    Thay đổi mật khẩu tài khoản của bạn
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
+                                    {passwordError && (
+                                        <Alert variant="destructive">
+                                            <AlertCircle className="h-4 w-4" />
+                                            <AlertDescription>{passwordError}</AlertDescription>
+                                        </Alert>
+                                    )}
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="oldPassword">Mật Khẩu Cũ *</Label>
+                                        <Input
+                                            id="oldPassword"
+                                            type="password"
+                                            placeholder="Nhập mật khẩu hiện tại"
+                                            value={passwordData.oldPassword}
+                                            onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="newPassword">Mật Khẩu Mới *</Label>
+                                        <Input
+                                            id="newPassword"
+                                            type="password"
+                                            placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
+                                            value={passwordData.newPassword}
+                                            onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="confirmPassword">Xác Nhận Mật Khẩu Mới *</Label>
+                                        <Input
+                                            id="confirmPassword"
+                                            type="password"
+                                            placeholder="Nhập lại mật khẩu mới"
+                                            value={passwordData.confirmPassword}
+                                            onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                            required
+                                        />
+                                    </div>
+
+                                    <Button
+                                        type="submit"
+                                        disabled={passwordLoading}
+                                        className="w-full"
+                                    >
+                                        {passwordLoading ? "Đang cập nhật..." : "Thay Đổi Mật Khẩu"}
+                                    </Button>
+
+                                    <p className="text-xs text-muted-foreground">
+                                        Mật khẩu của bạn sẽ được mã hóa an toàn trên máy chủ.
+                                    </p>
+                                </form>
+                            </CardContent>
+                        </Card>
+
+                        {/* Active Sessions Card (MOCKUP) */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">Quản Lý Phiên Hoạt Động</CardTitle>
+                                <CardDescription>Các thiết bị đang đăng nhập bằng tài khoản của bạn</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {activeSessions.map(session => (
+                                    <div key={session.id} className="p-3 border rounded-lg space-y-2">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <SmartphoneIcon className="h-5 w-5 text-primary" />
+                                                <div>
+                                                    <p className="font-medium">{session.device}</p>
+                                                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                                        <MapPin className="h-3 w-3" /> {session.location}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {session.current ? (
+                                                <div className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                                                    Thiết bị hiện tại
+                                                </div>
+                                            ) : (
+                                                <Button
+                                                    size="sm"
+                                                    variant="destructive"
+                                                    className="h-7 px-3 text-xs"
+                                                    onClick={() => handleSignOutDevice(session.id)}
+                                                >
+                                                    <LogOut className="h-3 w-3 mr-1" /> Đăng Xuất
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            <Clock className="h-3 w-3 inline mr-1" />
+                                            Hoạt động lần cuối: {session.lastActivity}
+                                        </p>
+                                    </div>
+                                ))}
+                                <Button
+                                    variant="outline"
+                                    className="w-full"
+                                    onClick={handleSignOutEverywhere}
+                                >
+                                    <LogOut className="h-4 w-4 mr-2" />
+                                    Đăng Xuất Khỏi Tất Cả Thiết Bị Khác
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* ===== 2. NOTIFICATIONS ===== */}
+                    <TabsContent value="notifications" className="mt-6 space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Bell className="h-5 w-5" /> Cài Đặt Thông Báo
+                                </CardTitle>
+                                <CardDescription>
+                                    Quản lý các loại thông báo mà bạn nhận được
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                {/* Email Notifications */}
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-lg">Thông Báo Email</h3>
+
+                                    <div className="flex items-center justify-between p-4 border rounded-lg">
+                                        <div className="flex-1">
+                                            <p className="font-medium">Công Việc Mới</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                Nhận thông báo khi được giao công việc mới
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={notificationSettings.email_new_tasks}
+                                            onCheckedChange={() => handleNotificationChange('email_new_tasks')}
+                                            disabled={notificationLoading}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between p-4 border rounded-lg">
+                                        <div className="flex-1">
+                                            <p className="font-medium">Yêu Cầu Phê Duyệt</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                Nhận thông báo khi có yêu cầu phê duyệt cần xử lý
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={notificationSettings.email_approvals}
+                                            onCheckedChange={() => handleNotificationChange('email_approvals')}
+                                            disabled={notificationLoading}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between p-4 border rounded-lg">
+                                        <div className="flex-1">
+                                            <p className="font-medium">Báo Cáo Hàng Ngày</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                Nhận tóm tắt hoạt động hàng ngày
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={notificationSettings.email_daily_reports}
+                                            onCheckedChange={() => handleNotificationChange('email_daily_reports')}
+                                            disabled={notificationLoading}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* In-App Notifications */}
+                                <div className="space-y-4 border-t pt-6">
+                                    <h3 className="font-semibold text-lg">Thông Báo Trong Ứng Dụng</h3>
+
+                                    <div className="flex items-center justify-between p-4 border rounded-lg">
+                                        <div className="flex-1">
+                                            <p className="font-medium">Bật Thông Báo Trong App</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                Hiển thị thông báo trong ứng dụng (badge, popup)
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={notificationSettings.in_app_notifications}
+                                            onCheckedChange={() => handleNotificationChange('in_app_notifications')}
+                                            disabled={notificationLoading}
+                                        />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* ===== 3. THEME & UI ===== */}
+                    <TabsContent value="theme" className="mt-6 space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Palette className="h-5 w-5" /> Chế Độ Giao Diện
+                                </CardTitle>
+                                <CardDescription>
+                                    Chọn chế độ hiển thị sáng, tối hoặc theo cài đặt hệ thống.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-4">
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        {/* Light Mode */}
+                                        <div
+                                            onClick={() => handleThemeChange('light')}
+                                            className={`p-6 border-2 rounded-lg cursor-pointer transition-all ${
+                                                themePreference === 'light'
+                                                    ? 'border-primary bg-primary/5'
+                                                    : 'border-border hover:border-muted-foreground'
+                                                }`}
+                                        >
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h3 className="font-semibold">Chế Độ Sáng</h3>
+                                                {themePreference === 'light' && (
+                                                    <CheckCircle2 className="h-5 w-5 text-primary" />
+                                                )}
+                                            </div>
+                                            <p className="text-sm text-muted-foreground">
+                                                Giao diện sáng (trắng)
+                                            </p>
+                                        </div>
+
+                                        {/* Dark Mode */}
+                                        <div
+                                            onClick={() => handleThemeChange('dark')}
+                                            className={`p-6 border-2 rounded-lg cursor-pointer transition-all ${
+                                                themePreference === 'dark'
+                                                    ? 'border-primary bg-primary/5'
+                                                    : 'border-border hover:border-muted-foreground'
+                                                }`}
+                                        >
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h3 className="font-semibold">Chế Độ Tối</h3>
+                                                {themePreference === 'dark' && (
+                                                    <CheckCircle2 className="h-5 w-5 text-primary" />
+                                                )}
+                                            </div>
+                                            <p className="text-sm text-muted-foreground">
+                                                Giao diện tối (đen)
+                                            </p>
+                                        </div>
+
+                                        {/* System */}
+                                        <div
+                                            onClick={() => handleThemeChange('system')}
+                                            className={`p-6 border-2 rounded-lg cursor-pointer transition-all ${
+                                                themePreference === 'system'
+                                                    ? 'border-primary bg-primary/5'
+                                                    : 'border-border hover:border-muted-foreground'
+                                                }`}
+                                        >
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h3 className="font-semibold">Theo Hệ Thống</h3>
+                                                {themePreference === 'system' && (
+                                                    <CheckCircle2 className="h-5 w-5 text-primary" />
+                                                )}
+                                            </div>
+                                            <p className="text-sm text-muted-foreground">
+                                                Theo cài đặt hệ thống
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {themeLoading && (
+                                        <p className="text-sm text-muted-foreground">Đang cập nhật...</p>
+                                    )}
+
+                                    <Alert>
+                                        <AlertDescription>
+                                            Chế độ giao diện được lưu trên cơ sở dữ liệu và sẽ được tải khi bạn đăng nhập lần tới.
+                                        </AlertDescription>
+                                    </Alert>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* ===== 4. DATA & ACCOUNT MANAGEMENT ===== */}
+                    <TabsContent value="data" className="mt-6 space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg flex items-center gap-2">
+                                    <Download className="h-5 w-5" /> Xuất Dữ Liệu
+                                </CardTitle>
+                                <CardDescription>
+                                    Tải xuống bản sao dữ liệu cá nhân của bạn (cá nhân và các cài đặt).
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Button
+                                    variant="outline"
+                                    className="w-full justify-start"
+                                    // Logic handleExportData (MOCKUP)
+                                    onClick={() => toast({ title: "Đang xử lý", description: "Tính năng xuất dữ liệu đang được triển khai..." })}
+                                >
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Xuất Dữ Liệu Của Tôi (JSON)
+                                </Button>
+                            </CardContent>
+                        </Card>
+
+                        {/* Delete Account Card */}
+                        <Card className="shadow-lg border-red-200 dark:border-red-800">
+                            <CardHeader>
+                                <CardTitle className="text-lg text-red-600 flex items-center gap-2">
+                                    <AlertTriangle className="h-5 w-5" /> Xóa Tài Khoản
+                                </CardTitle>
+                                <CardDescription>Xóa vĩnh viễn tài khoản của bạn</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Alert className="mb-4 border-red-200 bg-red-50 dark:bg-red-950">
+                                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                                    <AlertDescription className="text-red-800 dark:text-red-200">
+                                        Cảnh báo: Hành động này không thể hoàn tác. Tất cả dữ liệu của bạn sẽ bị xóa.
+                                    </AlertDescription>
+                                </Alert>
+                                <Button
+                                    variant="destructive"
+                                    className="w-full"
+                                    onClick={() => setShowDeleteDialog(true)}
+                                >
+                                    <X className="mr-2 h-4 w-4" />
+                                    Yêu Cầu Xóa Tài Khoản
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                </Tabs>
+            </div>
+
+            {/* ===== DIALOGS ===== */}
+            {/* Delete Account Dialog */}
+            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Xóa Tài Khoản Vĩnh Viễn?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Hành động này sẽ gửi yêu cầu xóa tài khoản của bạn đến Admin/HR. Vui lòng xác nhận bằng cách nhập: **"Xóa tài khoản của tôi"**
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="space-y-4 py-4">
+                        <Input
+                            placeholder="Nhập 'Xóa tài khoản của tôi' để xác nhận"
+                            value={deleteConfirmText}
+                            onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        />
                     </div>
-                    {session.current && (
-                      <div className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
-                        Thiết bị hiện tại
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3 inline mr-1" />
-                    Hoạt động lần cuối: {session.lastActivity}
-                  </p>
-                  {!session.current && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="w-full"
-                      onClick={() => handleSignOutDevice(session.id)}
-                    >
-                      <LogOut className="h-3 w-3 mr-1" />
-                      Đăng Xuất
-                    </Button>
-                  )}
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleSignOutEverywhere}
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                Đăng Xuất Khỏi Tất Cả Thiết Bị Khác
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Security Alerts */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Cảnh Báo Bảo Mật</CardTitle>
-              <CardDescription>Nhận thông báo về hoạt động đáng ngờ</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium">Đăng nhập từ thiết bị mới</p>
-                  <p className="text-sm text-muted-foreground">Gửi email khi phát hiện đăng nhập từ thiết bị mới</p>
-                </div>
-                <Switch
-                  checked={settings.securityAlerts.newDevice}
-                  onCheckedChange={() => handleSecurityAlertToggle('newDevice')}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium">Đăng nhập từ vị trí mới</p>
-                  <p className="text-sm text-muted-foreground">Gửi email khi phát hiện đăng nhập từ vị trí mới</p>
-                </div>
-                <Switch
-                  checked={settings.securityAlerts.newLocation}
-                  onCheckedChange={() => handleSecurityAlertToggle('newLocation')}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ===== 2. NOTIFICATIONS ===== */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Bell className="h-6 w-6 text-primary" />
-            <h2 className="text-2xl font-bold">🔔 Cài Đặt Thông Báo</h2>
-          </div>
-
-          {/* Notification Channels */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Kênh Thông Báo</CardTitle>
-              <CardDescription>Chọn cách bạn muốn nhận thông báo</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    Thông báo qua Email
-                  </p>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo qua email</p>
-                </div>
-                <Switch
-                  checked={settings.notifications.email}
-                  onCheckedChange={() => handleNotificationChannelToggle('email')}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium flex items-center gap-2">
-                    <Globe className="h-4 w-4" />
-                    Thông báo Trên Trình Duyệt
-                  </p>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo web push</p>
-                </div>
-                <Switch
-                  checked={settings.notifications.push}
-                  onCheckedChange={() => handleNotificationChannelToggle('push')}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium flex items-center gap-2">
-                    <Bell className="h-4 w-4" />
-                    Thông báo Trong Ứng Dụng
-                  </p>
-                  <p className="text-sm text-muted-foreground">Nhận thông báo bên trong ứng dụng</p>
-                </div>
-                <Switch
-                  checked={settings.notifications.inApp}
-                  onCheckedChange={() => handleNotificationChannelToggle('inApp')}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Notification Events */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Tùy Chỉnh Sự Kiện</CardTitle>
-              <CardDescription>Chọn những sự kiện nào kích hoạt thông báo</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <p className="font-medium">Công việc được giao cho tôi</p>
-                <Switch
-                  checked={settings.notificationEvents.taskAssigned}
-                  onCheckedChange={() => handleNotificationEventToggle('taskAssigned')}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <p className="font-medium">Công việc tôi tạo được cập nhật</p>
-                <Switch
-                  checked={settings.notificationEvents.taskUpdated}
-                  onCheckedChange={() => handleNotificationEventToggle('taskUpdated')}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <p className="font-medium">Có bình luận mới trong công việc liên quan</p>
-                <Switch
-                  checked={settings.notificationEvents.comments}
-                  onCheckedChange={() => handleNotificationEventToggle('comments')}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <p className="font-medium">Nhắc nhở về deadline</p>
-                <Switch
-                  checked={settings.notificationEvents.deadlineReminder}
-                  onCheckedChange={() => handleNotificationEventToggle('deadlineReminder')}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Quiet Hours */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Giờ Im Lặng (Không Làm Phiền)</CardTitle>
-              <CardDescription>Đặt khoảng thời gian không nhận thông báo</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium">Bật Giờ Im Lặng</p>
-                  <p className="text-sm text-muted-foreground">Không gửi thông báo trong khoảng thời gian này</p>
-                </div>
-                <Switch
-                  checked={settings.quietHours.enabled}
-                  onCheckedChange={handleQuietHoursToggle}
-                />
-              </div>
-
-              {settings.quietHours.enabled && (
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-                  <div className="space-y-2">
-                    <Label htmlFor="quiet-start">Bắt đầu</Label>
-                    <Input
-                      id="quiet-start"
-                      type="time"
-                      value={settings.quietHours.start}
-                      onChange={(e) => {
-                        const newSettings = { ...settings, quietHours: { ...settings.quietHours, start: e.target.value } };
-                        setSettings(newSettings);
-                        localStorage.setItem('quietHours', JSON.stringify(newSettings.quietHours));
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="quiet-end">Kết thúc</Label>
-                    <Input
-                      id="quiet-end"
-                      type="time"
-                      value={settings.quietHours.end}
-                      onChange={(e) => {
-                        const newSettings = { ...settings, quietHours: { ...settings.quietHours, end: e.target.value } };
-                        setSettings(newSettings);
-                        localStorage.setItem('quietHours', JSON.stringify(newSettings.quietHours));
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ===== 3. APP PREFERENCES ===== */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Palette className="h-6 w-6 text-primary" />
-            <h2 className="text-2xl font-bold">🎨 Tùy Chỉnh Ứng Dụng</h2>
-          </div>
-
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Giao Diện & Ngôn Ngữ</CardTitle>
-              <CardDescription>Cá nhân hóa trải nghiệm của bạn</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="theme-select">Chế Độ Giao Diện</Label>
-                <Select value={settings.theme} onValueChange={handleThemeChange}>
-                  <SelectTrigger id="theme-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">☀️ Sáng (Light)</SelectItem>
-                    <SelectItem value="dark">🌙 Tối (Dark)</SelectItem>
-                    <SelectItem value="system">🖥️ Theo Hệ Thống</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="language-select">Ngôn Ngữ Hiển Thị</Label>
-                <Select value={settings.language} onValueChange={handleLanguageChange}>
-                  <SelectTrigger id="language-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="vi">🇻🇳 Tiếng Việt</SelectItem>
-                    <SelectItem value="en">🇬🇧 English</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="timezone-select">Múi Giờ</Label>
-                <Select value={settings.timezone} onValueChange={handleTimezoneChange}>
-                  <SelectTrigger id="timezone-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Asia/Ho_Chi_Minh">UTC+7 - Việt Nam (Hà Nội)</SelectItem>
-                    <SelectItem value="Asia/Bangkok">UTC+7 - Bangkok</SelectItem>
-                    <SelectItem value="Asia/Singapore">UTC+8 - Singapore</SelectItem>
-                    <SelectItem value="Asia/Hong_Kong">UTC+8 - Hong Kong</SelectItem>
-                    <SelectItem value="Asia/Tokyo">UTC+9 - Tokyo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="default-page-select">Trang Chủ Mặc Định</Label>
-                <Select value={settings.defaultPage} onValueChange={handleDefaultPageChange}>
-                  <SelectTrigger id="default-page-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="dashboard">
-                      <Home className="h-4 w-4 inline mr-2" />
-                      Dashboard
-                    </SelectItem>
-                    <SelectItem value="tasks">
-                      <Calendar className="h-4 w-4 inline mr-2" />
-                      Công Việc (Kanban)
-                    </SelectItem>
-                    <SelectItem value="calendar">
-                      <Calendar className="h-4 w-4 inline mr-2" />
-                      Lịch
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ===== 4. DATA & ACCOUNT MANAGEMENT ===== */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Download className="h-6 w-6 text-primary" />
-            <h2 className="text-2xl font-bold">🗑️ Quản Lý Dữ Liệu & Tài Khoản</h2>
-          </div>
-
-          {/* Export Data */}
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg">Xuất Dữ Liệu</CardTitle>
-              <CardDescription>Tải xuống bản sao dữ liệu cá nhân của bạn</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={handleExportData}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Xuất Dữ Liệu Của Tôi (JSON)
-              </Button>
-              <p className="text-xs text-muted-foreground mt-3">
-                Dữ liệu sẽ được tải xuống dưới dạng file JSON chứa thông tin cá nhân và các cài đặt của bạn.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Delete Account */}
-          <Card className="shadow-lg border-red-200 dark:border-red-800">
-            <CardHeader>
-              <CardTitle className="text-lg text-red-600 flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" />
-                Xóa Tài Khoản
-              </CardTitle>
-              <CardDescription>Xóa vĩnh viễn tài khoản của bạn</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Alert className="mb-4 border-red-200 bg-red-50 dark:bg-red-950">
-                <AlertTriangle className="h-4 w-4 text-red-600" />
-                <AlertDescription className="text-red-800 dark:text-red-200">
-                  Cảnh báo: Hành động này không thể hoàn tác. Tất cả dữ liệu của bạn sẽ bị xóa.
-                </AlertDescription>
-              </Alert>
-              <Button
-                variant="destructive"
-                className="w-full"
-                onClick={() => setShowDeleteDialog(true)}
-              >
-                <X className="mr-2 h-4 w-4" />
-                Xóa Tài Khoản Của Tôi
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* ===== DIALOGS ===== */}
-
-      {/* Change Password Dialog */}
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Thay Đổi Mật Khẩu</DialogTitle>
-            <DialogDescription>Nhập mật khẩu cũ và mật khẩu mới</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="old-password">Mật Khẩu Cũ</Label>
-              <Input
-                id="old-password"
-                type="password"
-                placeholder="Nhập mật khẩu cũ"
-                value={passwordForm.oldPassword}
-                onChange={(e) => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">Mật Khẩu Mới</Label>
-              <Input
-                id="new-password"
-                type="password"
-                placeholder="Nhập mật khẩu mới"
-                value={passwordForm.newPassword}
-                onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Xác Nhận Mật Khẩu</Label>
-              <Input
-                id="confirm-password"
-                type="password"
-                placeholder="Xác nhận mật khẩu mới"
-                value={passwordForm.confirmPassword}
-                onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="flex gap-3 justify-end mt-6">
-            <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
-              Hủy
-            </Button>
-            <Button onClick={handleChangePassword} className="bg-primary">
-              Thay Đổi Mật Khẩu
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 2FA Setup Dialog */}
-      <Dialog open={show2FADialog} onOpenChange={setShow2FADialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Thiết Lập Xác Thực Hai Yếu Tố</DialogTitle>
-            <DialogDescription>Quét mã QR bằng ứng dụng authenticator</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                Hãy lưu các mã khôi phục ở nơi an toàn. Chúng có thể được sử dụng nếu bạn mất quyền truy cập vào ứng dụng authenticator.
-              </AlertDescription>
-            </Alert>
-            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg text-center">
-              <p className="text-sm text-muted-foreground mb-2">Mã QR sẽ hiển thị ở đây</p>
-              <div className="bg-white dark:bg-gray-900 p-4 rounded inline-block">
-                <div className="w-32 h-32 bg-gray-200 rounded flex items-center justify-center">
-                  <span className="text-xs text-muted-foreground">QR Code</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-3 justify-end mt-6">
-            <Button variant="outline" onClick={() => setShow2FADialog(false)}>
-              Hủy
-            </Button>
-            <Button onClick={handleEnable2FA} className="bg-primary">
-              Xác Nhận & Bật 2FA
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Account Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xóa Tài Khoản Vĩnh Viễn?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Hành động này không thể hoàn tác. Tất cả dữ liệu của bạn sẽ bị xóa vĩnh viễn. Vui lòng xác nhận bằng cách nhập: "Xóa tài khoản của tôi"
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-4 py-4">
-            <Input
-              placeholder="Nhập 'Xóa tài khoản của tôi' để xác nhận"
-              value={deleteConfirmText}
-              onChange={(e) => setDeleteConfirmText(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-3 justify-end">
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteAccount}
-              className="bg-red-600 hover:bg-red-700"
-              disabled={deleteConfirmText !== 'Xóa tài khoản của tôi'}
-            >
-              Xóa Tài Khoản
-            </AlertDialogAction>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
-    </DashboardLayout>
-  );
+                    <div className="flex gap-3 justify-end">
+                        <AlertDialogCancel>Hủy</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleDeleteAccount}
+                            className="bg-red-600 hover:bg-red-700"
+                            disabled={deleteConfirmText !== 'Xóa tài khoản của tôi'}
+                        >
+                            Gửi Yêu Cầu Xóa
+                        </AlertDialogAction>
+                    </div>
+                </AlertDialogContent>
+            </AlertDialog>
+        </DashboardLayout>
+    );
 };
 
 export default SettingsPage;
