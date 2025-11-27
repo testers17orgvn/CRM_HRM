@@ -413,8 +413,11 @@ export type Database = {
           creator_id: string
           deadline: string | null
           description: string | null
+          field_id: string | null
+          group_id: string | null
           id: string
           priority: Database["public"]["Enums"]["task_priority"]
+          space_id: string | null
           status: Database["public"]["Enums"]["task_status"]
           team_id: string | null
           title: string
@@ -427,8 +430,11 @@ export type Database = {
           creator_id: string
           deadline?: string | null
           description?: string | null
+          field_id?: string | null
+          group_id?: string | null
           id?: string
           priority?: Database["public"]["Enums"]["task_priority"]
+          space_id?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           team_id?: string | null
           title: string
@@ -441,8 +447,11 @@ export type Database = {
           creator_id?: string
           deadline?: string | null
           description?: string | null
+          field_id?: string | null
+          group_id?: string | null
           id?: string
           priority?: Database["public"]["Enums"]["task_priority"]
+          space_id?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           team_id?: string | null
           title?: string
@@ -454,6 +463,27 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "spaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "fields"
             referencedColumns: ["id"]
           },
         ]
