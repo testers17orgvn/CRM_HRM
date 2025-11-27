@@ -108,7 +108,7 @@ const useBoard = (teamId: string) => {
             return createdTask;
         } catch (error) {
             console.error('Error creating task:', error);
-            toast({ title: 'Lỗi', description: 'Không tạo được công việc', variant: 'destructive' });
+            toast({ title: 'Lỗi', description: 'Không t��o được công việc', variant: 'destructive' });
         }
     }, [toast]);
 
@@ -263,7 +263,11 @@ export const KanbanBoard = ({ teamId, userId, users }: KanbanBoardProps) => {
                     .eq('is_active', true)
                     .order('position', { ascending: true });
 
-                if (groupsError) throw groupsError;
+                if (groupsError) {
+                    console.error('Groups fetch error:', groupsError.message, groupsError);
+                    throw new Error(`Failed to fetch groups: ${groupsError.message}`);
+                }
+
                 const fetchedGroups = (groupsData || []) as Group[];
                 setGroups(fetchedGroups);
 
@@ -278,20 +282,29 @@ export const KanbanBoard = ({ teamId, userId, users }: KanbanBoardProps) => {
                         .eq('is_active', true)
                         .order('position', { ascending: true });
 
-                    if (spacesError) throw spacesError;
+                    if (spacesError) {
+                        console.error('Spaces fetch error:', spacesError.message, spacesError);
+                        throw new Error(`Failed to fetch spaces: ${spacesError.message}`);
+                    }
+
                     const fetchedSpaces = (spacesData || []) as Space[];
                     setSpaces(fetchedSpaces);
                     if (fetchedSpaces.length > 0) {
                         setSelectedSpaceId(fetchedSpaces[0].id);
                     }
+                } else if (fetchedGroups.length === 0) {
+                    console.warn('No groups found for team:', teamId);
                 }
             } catch (error) {
-                console.error('Error fetching groups and spaces:', error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error('Error fetching groups and spaces:', errorMessage);
                 toast({
                     title: 'Lỗi',
-                    description: 'Không tải được nhóm và không gian',
+                    description: errorMessage || 'Không tải được nhóm và không gian',
                     variant: 'destructive'
                 });
+                setGroups([]);
+                setSpaces([]);
             } finally {
                 setGroupsLoading(false);
             }
@@ -300,7 +313,7 @@ export const KanbanBoard = ({ teamId, userId, users }: KanbanBoardProps) => {
         if (teamId) {
             fetchGroupsAndSpaces();
         }
-    }, [teamId]);
+    }, [teamId, toast]);
 
     // Handle group change
     const handleGroupChange = async (groupId: string) => {
