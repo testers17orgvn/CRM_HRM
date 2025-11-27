@@ -909,12 +909,12 @@ const TaskCard = ({ task, users, groups, spaces, onUpdate, onDelete }: TaskCardP
                         </div>
                         <div>
                             <Label htmlFor="edit-group">Nhóm</Label>
-                            <Select value={formData.group_id || ''} onValueChange={(v) => setFormData({ ...formData, group_id: v || null })}>
+                            <Select value={formData.group_id || '__none__'} onValueChange={(v) => setFormData({ ...formData, group_id: v === '__none__' ? null : v, space_id: null })}>
                                 <SelectTrigger id="edit-group">
                                     <SelectValue placeholder="Chọn Nhóm" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">Không có nhóm</SelectItem>
+                                    <SelectItem value="__none__">Không có nhóm</SelectItem>
                                     {groups.map(group => (
                                         <SelectItem key={group.id} value={group.id}>
                                             {group.name}
@@ -923,15 +923,15 @@ const TaskCard = ({ task, users, groups, spaces, onUpdate, onDelete }: TaskCardP
                                 </SelectContent>
                             </Select>
                         </div>
-                        {formData.group_id && spaces.length > 0 && (
+                        {formData.group_id && spaces.filter(s => s.group_id === formData.group_id).length > 0 && (
                             <div>
                                 <Label htmlFor="edit-space">Không Gian</Label>
-                                <Select value={formData.space_id || ''} onValueChange={(v) => setFormData({ ...formData, space_id: v || null })}>
+                                <Select value={formData.space_id || '__none__'} onValueChange={(v) => setFormData({ ...formData, space_id: v === '__none__' ? null : v })}>
                                     <SelectTrigger id="edit-space">
                                         <SelectValue placeholder="Chọn Không Gian" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="">Không có không gian</SelectItem>
+                                        <SelectItem value="__none__">Không có không gian</SelectItem>
                                         {spaces.filter(s => s.group_id === formData.group_id).map(space => (
                                             <SelectItem key={space.id} value={space.id}>
                                                 {space.name}
