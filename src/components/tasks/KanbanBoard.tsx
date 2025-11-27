@@ -888,6 +888,40 @@ const TaskCard = ({ task, users, groups, spaces, onUpdate, onDelete }: TaskCardP
                                 disabled={isLoading}
                             />
                         </div>
+                        <div>
+                            <Label htmlFor="edit-group">Nhóm</Label>
+                            <Select value={formData.group_id || ''} onValueChange={(v) => setFormData({ ...formData, group_id: v || null })}>
+                                <SelectTrigger id="edit-group">
+                                    <SelectValue placeholder="Chọn Nhóm" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="">Không có nhóm</SelectItem>
+                                    {groups.map(group => (
+                                        <SelectItem key={group.id} value={group.id}>
+                                            {group.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {formData.group_id && spaces.length > 0 && (
+                            <div>
+                                <Label htmlFor="edit-space">Không Gian</Label>
+                                <Select value={formData.space_id || ''} onValueChange={(v) => setFormData({ ...formData, space_id: v || null })}>
+                                    <SelectTrigger id="edit-space">
+                                        <SelectValue placeholder="Chọn Không Gian" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="">Không có không gian</SelectItem>
+                                        {spaces.filter(s => s.group_id === formData.group_id).map(space => (
+                                            <SelectItem key={space.id} value={space.id}>
+                                                {space.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                     </div>
                     <DialogFooter className="flex justify-between pt-4">
                         <DialogTrigger asChild>
