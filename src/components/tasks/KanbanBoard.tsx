@@ -38,6 +38,9 @@ interface Task {
     creator_id: string;
     team_id: string | null;
     status: 'todo' | 'in_progress' | 'review' | 'done';
+    group_id: string | null;
+    space_id: string | null;
+    field_id: string | null;
     created_at: string;
     updated_at: string;
     completed_at: string | null;
