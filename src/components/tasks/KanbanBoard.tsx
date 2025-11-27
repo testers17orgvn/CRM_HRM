@@ -108,7 +108,7 @@ const useBoard = (teamId: string) => {
             return createdTask;
         } catch (error) {
             console.error('Error creating task:', error);
-            toast({ title: 'Lỗi', description: 'Không t��o được công việc', variant: 'destructive' });
+            toast({ title: 'Lỗi', description: 'Không tạo được công việc', variant: 'destructive' });
         }
     }, [toast]);
 
@@ -442,12 +442,12 @@ export const KanbanBoard = ({ teamId, userId, users }: KanbanBoardProps) => {
 
                     {/* Space Selector */}
                     {spaces.length > 0 && (
-                        <Select value={selectedSpaceId} onValueChange={setSelectedSpaceId}>
+                        <Select value={selectedSpaceId || '__all__'} onValueChange={(value) => setSelectedSpaceId(value === '__all__' ? '' : value)}>
                             <SelectTrigger className="bg-white dark:bg-gray-700">
                                 <SelectValue placeholder="Chọn Không Gian..." />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">Tất cả Không Gian</SelectItem>
+                                <SelectItem value="__all__">Tất cả Không Gian</SelectItem>
                                 {spaces.map(space => (
                                     <SelectItem key={space.id} value={space.id}>
                                         <span className="flex items-center gap-2">
