@@ -328,19 +328,21 @@ export const KanbanBoard = ({ teamId, userId, users }: KanbanBoardProps) => {
         }
     };
 
-    // Filter tasks based on search and filters
+    // Filter tasks based on search, group, space, and other filters
     const filteredTasks = useMemo(() => {
         return tasks.filter(task => {
             const matchesSearch = searchQuery === '' ||
                 task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
 
+            const matchesGroup = !selectedGroupId || task.group_id === selectedGroupId;
+            const matchesSpace = !selectedSpaceId || task.space_id === selectedSpaceId;
             const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
             const matchesAssignee = assigneeFilter === 'all' || task.assignee_id === assigneeFilter;
 
-            return matchesSearch && matchesPriority && matchesAssignee;
+            return matchesSearch && matchesGroup && matchesSpace && matchesPriority && matchesAssignee;
         });
-    }, [tasks, searchQuery, priorityFilter, assigneeFilter]);
+    }, [tasks, searchQuery, selectedGroupId, selectedSpaceId, priorityFilter, assigneeFilter]);
 
     const uniquePriorities = useMemo(() =>
         ['all', ...new Set(tasks.map(t => t.priority))],
