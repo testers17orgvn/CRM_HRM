@@ -75,7 +75,7 @@ const AttendanceWidget = () => {
       averageHoursPerDay: validDays > 0 ? totalHours / validDays : 0,
       onTimeRate: 95 // Mock for now
     });
-  }, []); // Dependencies rỗng v�� không phụ thuộc vào state hay props
+  }, []); // Dependencies rỗng và không phụ thuộc vào state hay props
 
   // Hàm tải tất cả các bản ghi (được bọc trong useCallback)
   const loadAllAttendance = useCallback(async (uid: string) => {

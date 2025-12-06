@@ -87,7 +87,7 @@ const EditAttendanceDialog = ({ open, onOpenChange, record, onSave }: EditAttend
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "L��i",
+        title: "Lỗi",
         description: error instanceof Error ? error.message : "Không thể cập nhật"
       });
     } finally {

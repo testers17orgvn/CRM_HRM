@@ -350,7 +350,7 @@ const UsersManagement = () => {
             if (error) throw error;
 
             toast({
-                title: "Thành c��ng",
+                title: "Thành công",
                 description: `Thông tin của ${formData.first_name} ${formData.last_name} đã được cập nhật.`,
             });
 
@@ -367,7 +367,7 @@ const UsersManagement = () => {
         }
     };
 
-    // --- LOGIC XÓA NGƯ��I DÙNG ---
+    // --- LOGIC XÓA NGƯỜI DÙNG ---
     const handleDeleteUser = async (user: UserDetail) => {
         setUserToDelete(user);
         setIsDeleteConfirmOpen(true);
@@ -930,7 +930,7 @@ const UsersManagement = () => {
                         </div>
 
                         <div>
-                            <Label htmlFor="edit-phone">Số điện tho��i *</Label>
+                            <Label htmlFor="edit-phone">Số điện thoại *</Label>
                             <Input
                                 id="edit-phone"
                                 type="tel"

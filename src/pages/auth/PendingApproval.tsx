@@ -161,7 +161,7 @@ const PendingApproval = () => {
             {isRejected
               ? 'Yêu cầu của bạn không được phê duyệt. Vui lòng xem lý do bên dưới.'
               : fullyApproved
-              ? 'Tài khoản của bạn đã được phê duyệt bởi cả Admin v�� HR. Bạn có thể truy cập hệ thống ngay bây giờ.'
+              ? 'Tài khoản của bạn đã được phê duyệt bởi cả Admin và HR. Bạn có thể truy cập hệ thống ngay bây giờ.'
               : 'Cảm ơn bạn đã đăng ký! Tài khoản của bạn đang được xem xét bởi Admin và HR.'}
           </CardDescription>
         </CardHeader>

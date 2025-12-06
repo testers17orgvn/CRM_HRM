@@ -311,7 +311,7 @@ const ForgotPassword = () => {
                 </div>
                 <CardTitle className="text-2xl text-center">Thành Công!</CardTitle>
                 <CardDescription className="text-center">
-                  Mật khẩu của bạn đã đư��c thay đổi thành công.
+                  Mật khẩu của bạn đã được thay đổi thành công.
                 </CardDescription>
               </CardHeader>
               <CardContent>
