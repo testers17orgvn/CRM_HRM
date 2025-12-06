@@ -188,7 +188,7 @@ const RegistrationApprovals = () => {
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "L��i",
+        title: "Lỗi",
         description: error.message
       });
     }

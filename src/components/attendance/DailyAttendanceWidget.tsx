@@ -356,7 +356,7 @@ const DailyAttendanceWidget = () => {
 
       // Find the unclosed session
       const unclosedSession = todaySessions.find(s => !s.check_out);
-      if (!unclosedSession) throw new Error("Không tìm thấy phi��n làm việc");
+      if (!unclosedSession) throw new Error("Không tìm thấy phiền làm việc");
 
       const { error } = await supabase
         .from('attendance')

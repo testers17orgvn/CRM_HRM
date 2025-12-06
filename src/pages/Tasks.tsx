@@ -113,7 +113,7 @@ const Tasks = () => {
               <span className="hidden sm:inline">Phân Bổ</span>
             </TabsTrigger>
 
-            {/* ======= NH��M MỤC TIÊU – QUY TRÌNH ======= */}
+            {/* ======= NHÓM MỤC TIÊU – QUY TRÌNH ======= */}
             {/* Mục tiêu / OKRs */}
             <TabsTrigger value="goals" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-2">
               <Target className="h-4 w-4" />

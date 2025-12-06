@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 // --- Custom Constants ---
 const APP_NAME = "MSC Center - HRM AI";
-const LOGO_PATH = "/LOGO.PNG"; // Đường dẫn đến logo tổ ch��c
+const LOGO_PATH = "/LOGO.PNG"; // Đường dẫn đến logo tổ chức
 
 const DEPARTMENTS = [
     { value: "IT", label: "Công Nghệ Thông Tin" },

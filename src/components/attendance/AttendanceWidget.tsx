@@ -381,7 +381,7 @@ const AttendanceWidget = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalDays}</div>
-            <p className="text-xs text-muted-foreground mt-1">C��a tháng</p>
+            <p className="text-xs text-muted-foreground mt-1">Của tháng</p>
           </CardContent>
         </Card>
 
