@@ -581,6 +581,7 @@ export const KanbanBoard = ({ teamId, userId, role, users }: KanbanBoardProps) =
                                 status={status}
                                 tasks={statusTasks}
                                 userId={userId}
+                                role={role}
                                 users={users}
                                 teamId={teamId}
                                 selectedGroupId={selectedGroupId}
@@ -603,6 +604,7 @@ interface KanbanColumnProps {
     status: TaskStatus;
     tasks: Task[];
     userId: string;
+    role: UserRole;
     teamId: string;
     selectedGroupId: string;
     selectedSpaceId: string;
@@ -618,6 +620,7 @@ const KanbanColumn = ({
     status,
     tasks,
     userId,
+    role,
     teamId,
     selectedGroupId,
     selectedSpaceId,
