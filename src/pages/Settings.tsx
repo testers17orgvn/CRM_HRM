@@ -71,8 +71,20 @@ const SettingsPage = () => {
     const [themePreference, setThemePreference] = useState<'light' | 'dark' | 'system'>('system');
     const [themeLoading, setThemeLoading] = useState(false);
 
-    // Active Sessions from Supabase Auth
-    const [activeSessions] = useState<Array<{ id: string; device: string; location: string | null; lastActivity: string; current: boolean }>>([]);
+    // --- Active Sessions State ---
+    interface UserSession {
+        id: string;
+        device_name: string | null;
+        device_os: string | null;
+        device_type: string | null;
+        location: string | null;
+        last_activity: string;
+        created_at: string;
+        session_id: string;
+    }
+
+    const [activeSessions, setActiveSessions] = useState<UserSession[]>([]);
+    const [sessionsLoading, setSessionsLoading] = useState(false);
 
 
     // Apply theme to DOM
