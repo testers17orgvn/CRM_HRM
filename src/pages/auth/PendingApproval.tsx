@@ -17,11 +17,18 @@ interface RegistrationStatus {
   hr_approved_at?: string;
 }
 
+interface AppSettings {
+  support_email?: string;
+  support_phone?: string;
+  organization_name?: string;
+}
+
 const PendingApproval = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [registration, setRegistration] = useState<RegistrationStatus | null>(null);
+  const [appSettings, setAppSettings] = useState<AppSettings>({});
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
