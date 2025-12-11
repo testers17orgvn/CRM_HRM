@@ -176,58 +176,83 @@ export default function NotificationBell() {
   fetchNotifications();
  };
 
+ const groupedNotifications = groupNotificationsByTime(notifications);
+
  return (
   <Popover open={open} onOpenChange={setOpen}>
    <PopoverTrigger asChild>
-    <Button variant="ghost" size="icon" className="relative">
+    <Button variant="ghost" size="icon" className="relative hover:bg-secondary">
      <Bell className="h-5 w-5" />
      {unreadCount > 0 && (
-      <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
-       {unreadCount}
+      <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-600">
+       {unreadCount > 9 ? '9+' : unreadCount}
       </Badge>
      )}
     </Button>
    </PopoverTrigger>
-   <PopoverContent className="w-80 p-0" align="end">
-    <div className="flex items-center justify-between p-4 border-b">
-     <h3 className="font-semibold">Notifications</h3>
+   <PopoverContent className="w-96 p-0" align="end">
+    <div className="flex items-center justify-between p-4 border-b bg-background sticky top-0 z-10">
+     <div>
+      <h3 className="font-semibold">Thông báo</h3>
+      {unreadCount > 0 && (
+       <p className="text-xs text-muted-foreground">{unreadCount} tin nhắn chưa đọc</p>
+      )}
+     </div>
      {unreadCount > 0 && (
-      <Button variant="ghost" size="sm" onClick={markAllAsRead}>
-       Mark all read
+      <Button variant="ghost" size="sm" onClick={markAllAsRead} className="text-xs">
+       Đánh dấu đã đọc
       </Button>
      )}
     </div>
-    <ScrollArea className="h-80">
+    <ScrollArea className="h-96">
      {notifications.length === 0 ? (
-      <div className="p-4 text-center text-muted-foreground">
-       No notifications
+      <div className="flex flex-col items-center justify-center p-8 text-center">
+       <Bell className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
+       <p className="text-sm font-medium text-muted-foreground">Không có thông báo</p>
+       <p className="text-xs text-muted-foreground mt-1">Bạn sẽ nhận thông báo khi có hoạt động mới</p>
       </div>
      ) : (
       <div className="divide-y">
-       {notifications.map((notification) => (
-        <div
-         key={notification.id}
-         className={`p-4 cursor-pointer hover:bg-secondary/50 transition-smooth ${
-          !notification.read ? "bg-primary/5" : ""
-         }`}
-         onClick={() => handleNotificationClick(notification)}
-        >
-         <div className="flex items-start gap-2">
-          <div className="flex-1">
-           <p className="font-medium text-sm">{notification.title}</p>
-           <p className="text-xs text-muted-foreground mt-1">
-            {notification.message}
-           </p>
-           <p className="text-xs text-muted-foreground mt-2">
-            {formatDistanceToNow(new Date(notification.created_at), {
-             addSuffix: true,
-            })}
-           </p>
-          </div>
-          {!notification.read && (
-           <div className="h-2 w-2 rounded-full bg-primary mt-1" />
-          )}
+       {groupedNotifications.map((group) => (
+        <div key={group.label}>
+         <div className="px-4 py-2 bg-secondary/50 sticky top-0 z-5">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+           {group.label}
+          </p>
          </div>
+         {group.notifications.map((notification) => (
+          <div
+           key={notification.id}
+           className={`px-4 py-3 cursor-pointer hover:bg-secondary/50 transition-colors border-l-2 ${
+            !notification.read
+             ? "bg-primary/5 border-l-primary"
+             : "border-l-transparent hover:border-l-primary/30"
+           }`}
+           onClick={() => handleNotificationClick(notification)}
+          >
+           <div className="flex items-start gap-3">
+            <div className="mt-1">
+             {getNotificationIcon(notification.type)}
+            </div>
+            <div className="flex-1 min-w-0">
+             <p className="font-medium text-sm leading-tight text-foreground">
+              {notification.title}
+             </p>
+             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+              {notification.message}
+             </p>
+             <p className="text-xs text-muted-foreground mt-2">
+              {formatDistanceToNow(new Date(notification.created_at), {
+               addSuffix: true,
+              })}
+             </p>
+            </div>
+            {!notification.read && (
+             <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-2" />
+            )}
+           </div>
+          </div>
+         ))}
         </div>
        ))}
       </div>
