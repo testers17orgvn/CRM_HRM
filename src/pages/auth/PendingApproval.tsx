@@ -360,8 +360,15 @@ const PendingApproval = () => {
               Nếu bạn có câu hỏi hoặc cần hỗ trợ, vui lòng liên hệ:
             </p>
             <ul className="text-sm text-gray-600 dark:text-gray-400 mt-2 space-y-1">
-              <li>📧 Email: <span className="font-medium">support@example.com</span></li>
-              <li>📱 Điện thoại: <span className="font-medium">+84-123-456-789</span></li>
+              {appSettings.support_email && (
+                <li>📧 Email: <a href={`mailto:${appSettings.support_email}`} className="font-medium text-primary hover:underline">{appSettings.support_email}</a></li>
+              )}
+              {appSettings.support_phone && (
+                <li>📱 Điện thoại: <a href={`tel:${appSettings.support_phone}`} className="font-medium text-primary hover:underline">{appSettings.support_phone}</a></li>
+              )}
+              {!appSettings.support_email && !appSettings.support_phone && (
+                <li className="text-gray-500 italic">Thông tin hỗ trợ đang được cập nhật</li>
+              )}
             </ul>
           </div>
         </CardContent>
