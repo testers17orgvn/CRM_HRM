@@ -143,6 +143,9 @@ const SettingsPage = () => {
                         applyTheme(dbTheme);
                     }
                 }
+
+                // Fetch active sessions
+                await loadActiveSessions(user.id);
             } catch (error) {
                 toast({
                     title: "Lỗi Tải Dữ Liệu",
@@ -156,6 +159,27 @@ const SettingsPage = () => {
 
         loadSettings();
     }, [navigate, toast]);
+
+    // Load active sessions from database
+    const loadActiveSessions = async (userId: string) => {
+        try {
+            setSessionsLoading(true);
+            const { data: sessions, error } = await supabase
+                .from('user_sessions')
+                .select('*')
+                .eq('user_id', userId)
+                .order('last_activity', { ascending: false });
+
+            if (error) throw error;
+
+            setActiveSessions(sessions || []);
+        } catch (error) {
+            console.error('Error loading sessions:', error);
+            setActiveSessions([]);
+        } finally {
+            setSessionsLoading(false);
+        }
+    };
 
 
     // Handle password change
