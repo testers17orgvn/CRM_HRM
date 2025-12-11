@@ -696,23 +696,79 @@ const KanbanColumn = ({
                 </div>
             </CardHeader>
             <CardContent className="space-y-3">
-                {tasks.map(task => (
-                    <TaskCard
-                        key={task.id}
-                        task={task}
-                        users={users}
-                        groups={groups}
-                        spaces={spaces}
-                        currentUserId={userId}
-                        onUpdate={onUpdateTask}
-                        onDelete={onDeleteTask}
-                    />
-                ))}
-
-                {tasks.length === 0 && (
-                    <div className="text-center py-6 text-muted-foreground text-xs dark:text-gray-500">
-                        Chưa có công việc nào
+                {tasks.length === 0 ? (
+                    <div className="text-center py-8 flex flex-col items-center justify-center min-h-[200px]">
+                        <div className="text-4xl mb-3 opacity-40">
+                            {status.value === 'todo' ? '📝' : status.value === 'in_progress' ? '⚙️' : status.value === 'review' ? '🔍' : '✅'}
+                        </div>
+                        <p className="text-muted-foreground text-xs font-medium mb-3">
+                            Chưa có công việc
+                        </p>
+                        <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" size="sm" className="text-xs hover:bg-primary/10 dark:hover:bg-primary/20">
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Thêm công việc
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Thêm Công Việc vào "{status.label}"</DialogTitle>
+                                </DialogHeader>
+                                <form onSubmit={handleAddTask} className="space-y-4">
+                                    <div>
+                                        <Label htmlFor="task-title">Tiêu đề Công việc</Label>
+                                        <Input
+                                            id="task-title"
+                                            value={taskTitle}
+                                            onChange={(e) => setTaskTitle(e.target.value)}
+                                            placeholder="Tiêu đề công việc"
+                                            disabled={isLoading}
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="task-priority">Ưu tiên</Label>
+                                        <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as 'low' | 'medium' | 'high' | 'urgent')}>
+                                            <SelectTrigger id="task-priority">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="low">Low (Thấp)</SelectItem>
+                                                <SelectItem value="medium">Medium (Trung bình)</SelectItem>
+                                                <SelectItem value="high">High (Cao)</SelectItem>
+                                                <SelectItem value="urgent">Urgent (Khẩn cấp)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <DialogFooter className="pt-4">
+                                        <Button variant="outline" onClick={() => setIsAddTaskOpen(false)} type="button" disabled={isLoading}>
+                                            Hủy
+                                        </Button>
+                                        <Button type="submit" disabled={isLoading}>
+                                            {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                                            Thêm
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
                     </div>
+                ) : (
+                    <>
+                        {tasks.map(task => (
+                            <TaskCard
+                                key={task.id}
+                                task={task}
+                                users={users}
+                                groups={groups}
+                                spaces={spaces}
+                                currentUserId={userId}
+                                onUpdate={onUpdateTask}
+                                onDelete={onDeleteTask}
+                            />
+                        ))}
+                    </>
                 )}
 
                 <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
