@@ -32,6 +32,26 @@ const PendingApproval = () => {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Fetch application settings
+  const fetchAppSettings = async () => {
+    try {
+      const { data: settings } = await supabase
+        .from('application_settings')
+        .select('setting_key, setting_value')
+        .in('setting_key', ['support_email', 'support_phone', 'organization_name']);
+
+      if (settings && settings.length > 0) {
+        const settingsMap: AppSettings = {};
+        settings.forEach(setting => {
+          settingsMap[setting.setting_key as keyof AppSettings] = setting.setting_value?.toString().replace(/"/g, '') || '';
+        });
+        setAppSettings(settingsMap);
+      }
+    } catch (error) {
+      console.error('Error fetching app settings:', error);
+    }
+  };
+
   useEffect(() => {
     const checkStatus = async () => {
       const currentUser = await getCurrentUser();
@@ -67,6 +87,9 @@ const PendingApproval = () => {
           hr_approved_at: regData.hr_approved_at
         });
       }
+
+      // Fetch application settings
+      await fetchAppSettings();
 
       setLoading(false);
     };
