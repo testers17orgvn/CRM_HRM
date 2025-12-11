@@ -71,8 +71,20 @@ const SettingsPage = () => {
     const [themePreference, setThemePreference] = useState<'light' | 'dark' | 'system'>('system');
     const [themeLoading, setThemeLoading] = useState(false);
 
-    // Active Sessions from Supabase Auth
-    const [activeSessions] = useState<Array<{ id: string; device: string; location: string | null; lastActivity: string; current: boolean }>>([]);
+    // --- Active Sessions State ---
+    interface UserSession {
+        id: string;
+        device_name: string | null;
+        device_os: string | null;
+        device_type: string | null;
+        location: string | null;
+        last_activity: string;
+        created_at: string;
+        session_id: string;
+    }
+
+    const [activeSessions, setActiveSessions] = useState<UserSession[]>([]);
+    const [sessionsLoading, setSessionsLoading] = useState(false);
 
 
     // Apply theme to DOM
@@ -131,6 +143,9 @@ const SettingsPage = () => {
                         applyTheme(dbTheme);
                     }
                 }
+
+                // Fetch active sessions
+                await loadActiveSessions(user.id);
             } catch (error) {
                 toast({
                     title: "Lỗi Tải Dữ Liệu",
@@ -144,6 +159,27 @@ const SettingsPage = () => {
 
         loadSettings();
     }, [navigate, toast]);
+
+    // Load active sessions from database
+    const loadActiveSessions = async (userId: string) => {
+        try {
+            setSessionsLoading(true);
+            const { data: sessions, error } = await supabase
+                .from('user_sessions')
+                .select('*')
+                .eq('user_id', userId)
+                .order('last_activity', { ascending: false });
+
+            if (error) throw error;
+
+            setActiveSessions(sessions || []);
+        } catch (error) {
+            console.error('Error loading sessions:', error);
+            setActiveSessions([]);
+        } finally {
+            setSessionsLoading(false);
+        }
+    };
 
 
     // Handle password change
@@ -308,15 +344,38 @@ const SettingsPage = () => {
     };
 
     // --- Helper Functions ---
-    const handleSignOutDevice = (sessionId: string) => {
-        // Logic thực tế: Gọi Supabase API để vô hiệu hóa session
-        toast({ title: "Thành công", description: `Thiết bị ID ${sessionId} đã được đăng xuất.` });
+    const handleSignOutDevice = async (sessionId: string) => {
+        try {
+            const { error } = await supabase
+                .from('user_sessions')
+                .delete()
+                .eq('id', sessionId)
+                .eq('user_id', userId);
+
+            if (error) throw error;
+
+            setActiveSessions(activeSessions.filter(s => s.id !== sessionId));
+            toast({ title: "Thành công", description: "Thiết bị đã được đăng xuất." });
+        } catch (error) {
+            toast({ title: "Lỗi", description: "Không thể đăng xuất thiết bị", variant: "destructive" });
+        }
     };
 
     const handleSignOutEverywhere = async () => {
-        await supabase.auth.signOut({ scope: 'global' });
-        navigate('/auth/login');
-        toast({ title: "Thành công", description: "Bạn đã được đăng xuất khỏi tất cả thiết bị." });
+        try {
+            const { error } = await supabase
+                .from('user_sessions')
+                .delete()
+                .eq('user_id', userId);
+
+            if (error) throw error;
+
+            await supabase.auth.signOut({ scope: 'global' });
+            navigate('/auth/login');
+            toast({ title: "Thành công", description: "Bạn đã được đăng xuất khỏi tất cả thiết bị." });
+        } catch (error) {
+            toast({ title: "Lỗi", description: "Không thể đăng xuất", variant: "destructive" });
+        }
     };
     
     // --- Render ---
@@ -436,54 +495,82 @@ const SettingsPage = () => {
                             </CardContent>
                         </Card>
 
-                        {/* Active Sessions Card (MOCKUP) */}
+                        {/* Active Sessions Card */}
                         <Card>
                             <CardHeader>
                                 <CardTitle className="text-lg">Quản Lý Phiên Hoạt Động</CardTitle>
                                 <CardDescription>Các thiết bị đang đăng nhập bằng tài khoản của bạn</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                {activeSessions.map(session => (
-                                    <div key={session.id} className="p-3 border rounded-lg space-y-2">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <SmartphoneIcon className="h-5 w-5 text-primary" />
-                                                <div>
-                                                    <p className="font-medium">{session.device}</p>
-                                                    <p className="text-sm text-muted-foreground flex items-center gap-1">
-                                                        <MapPin className="h-3 w-3" /> {session.location}
+                                {sessionsLoading ? (
+                                    <p className="text-center py-4 text-muted-foreground">Đang tải phiên hoạt động...</p>
+                                ) : activeSessions.length === 0 ? (
+                                    <p className="text-center py-4 text-muted-foreground">Không có phiên hoạt động nào</p>
+                                ) : (
+                                    <>
+                                        {activeSessions.map(session => {
+                                            const lastActivity = new Date(session.last_activity);
+                                            const now = new Date();
+                                            const diffMinutes = Math.floor((now.getTime() - lastActivity.getTime()) / (1000 * 60));
+                                            const diffHours = Math.floor(diffMinutes / 60);
+                                            const diffDays = Math.floor(diffHours / 24);
+
+                                            let timeString = '';
+                                            if (diffMinutes < 1) {
+                                                timeString = 'Vừa xong';
+                                            } else if (diffMinutes < 60) {
+                                                timeString = `${diffMinutes} phút trước`;
+                                            } else if (diffHours < 24) {
+                                                timeString = `${diffHours} giờ trước`;
+                                            } else {
+                                                timeString = `${diffDays} ngày trước`;
+                                            }
+
+                                            const deviceDisplay = session.device_name || session.device_type || 'Thiết bị không xác định';
+                                            const osDisplay = session.device_os ? `(${session.device_os})` : '';
+
+                                            return (
+                                                <div key={session.id} className="p-4 border rounded-lg space-y-3">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex items-center gap-3 flex-1">
+                                                            <SmartphoneIcon className="h-5 w-5 text-primary flex-shrink-0" />
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-medium truncate">{deviceDisplay} {osDisplay}</p>
+                                                                {session.location && (
+                                                                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                                                        <MapPin className="h-3 w-3 flex-shrink-0" /> {session.location}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-7 px-2 text-xs"
+                                                            onClick={() => handleSignOutDevice(session.id)}
+                                                        >
+                                                            <LogOut className="h-3 w-3 mr-1" /> Đăng Xuất
+                                                        </Button>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        <Clock className="h-3 w-3 inline mr-1" />
+                                                        Hoạt động lần cuối: {timeString}
                                                     </p>
                                                 </div>
-                                            </div>
-                                            {session.current ? (
-                                                <div className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
-                                                    Thiết bị hiện tại
-                                                </div>
-                                            ) : (
-                                                <Button
-                                                    size="sm"
-                                                    variant="destructive"
-                                                    className="h-7 px-3 text-xs"
-                                                    onClick={() => handleSignOutDevice(session.id)}
-                                                >
-                                                    <LogOut className="h-3 w-3 mr-1" /> Đăng Xuất
-                                                </Button>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">
-                                            <Clock className="h-3 w-3 inline mr-1" />
-                                            Hoạt động lần cuối: {session.lastActivity}
-                                        </p>
-                                    </div>
-                                ))}
-                                <Button
-                                    variant="outline"
-                                    className="w-full"
-                                    onClick={handleSignOutEverywhere}
-                                >
-                                    <LogOut className="h-4 w-4 mr-2" />
-                                    Đăng Xuất Khỏi Tất Cả Thiết Bị Khác
-                                </Button>
+                                            );
+                                        })}
+                                    </>
+                                )}
+                                {activeSessions.length > 0 && (
+                                    <Button
+                                        variant="outline"
+                                        className="w-full mt-2"
+                                        onClick={handleSignOutEverywhere}
+                                    >
+                                        <LogOut className="h-4 w-4 mr-2" />
+                                        Đăng Xuất Khỏi Tất Cả Thiết Bị Khác
+                                    </Button>
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>

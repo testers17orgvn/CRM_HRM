@@ -17,13 +17,40 @@ interface RegistrationStatus {
   hr_approved_at?: string;
 }
 
+interface AppSettings {
+  support_email?: string;
+  support_phone?: string;
+  organization_name?: string;
+}
+
 const PendingApproval = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [registration, setRegistration] = useState<RegistrationStatus | null>(null);
+  const [appSettings, setAppSettings] = useState<AppSettings>({});
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Fetch application settings
+  const fetchAppSettings = async () => {
+    try {
+      const { data: settings } = await supabase
+        .from('application_settings')
+        .select('setting_key, setting_value')
+        .in('setting_key', ['support_email', 'support_phone', 'organization_name']);
+
+      if (settings && settings.length > 0) {
+        const settingsMap: AppSettings = {};
+        settings.forEach(setting => {
+          settingsMap[setting.setting_key as keyof AppSettings] = setting.setting_value?.toString().replace(/"/g, '') || '';
+        });
+        setAppSettings(settingsMap);
+      }
+    } catch (error) {
+      console.error('Error fetching app settings:', error);
+    }
+  };
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -60,6 +87,9 @@ const PendingApproval = () => {
           hr_approved_at: regData.hr_approved_at
         });
       }
+
+      // Fetch application settings
+      await fetchAppSettings();
 
       setLoading(false);
     };
@@ -330,8 +360,15 @@ const PendingApproval = () => {
               Nếu bạn có câu hỏi hoặc cần hỗ trợ, vui lòng liên hệ:
             </p>
             <ul className="text-sm text-gray-600 dark:text-gray-400 mt-2 space-y-1">
-              <li>📧 Email: <span className="font-medium">support@example.com</span></li>
-              <li>📱 Điện thoại: <span className="font-medium">+84-123-456-789</span></li>
+              {appSettings.support_email && (
+                <li>📧 Email: <a href={`mailto:${appSettings.support_email}`} className="font-medium text-primary hover:underline">{appSettings.support_email}</a></li>
+              )}
+              {appSettings.support_phone && (
+                <li>📱 Điện thoại: <a href={`tel:${appSettings.support_phone}`} className="font-medium text-primary hover:underline">{appSettings.support_phone}</a></li>
+              )}
+              {!appSettings.support_email && !appSettings.support_phone && (
+                <li className="text-gray-500 italic">Thông tin hỗ trợ đang được cập nhật</li>
+              )}
             </ul>
           </div>
         </CardContent>
