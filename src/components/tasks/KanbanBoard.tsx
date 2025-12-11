@@ -386,21 +386,27 @@ export const KanbanBoard = ({ teamId, userId, role, users }: KanbanBoardProps) =
 
     const hasActiveFilters = searchQuery || priorityFilter !== 'all' || assigneeFilter !== 'all';
 
-    if (loading) {
+    if (loading || groupsLoading) {
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                    <Card key={i} className="dark:bg-gray-800">
-                        <CardHeader>
-                            <Skeleton className="h-5 w-24 bg-gray-200 dark:bg-gray-700" />
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {Array.from({ length: 3 }).map((_, j) => (
-                                <Skeleton key={j} className="h-24 w-full bg-gray-100 dark:bg-gray-700" />
-                            ))}
-                        </CardContent>
-                    </Card>
-                ))}
+            <div className="space-y-4">
+                {/* Skeleton for filters and controls */}
+                <Skeleton className="h-32 w-full bg-gray-200 dark:bg-gray-700 rounded-lg" />
+
+                {/* Skeleton for columns */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <Card key={i} className="dark:bg-gray-800">
+                            <CardHeader>
+                                <Skeleton className="h-5 w-24 bg-gray-200 dark:bg-gray-700" />
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {Array.from({ length: 3 }).map((_, j) => (
+                                    <Skeleton key={j} className="h-24 w-full bg-gray-100 dark:bg-gray-700 rounded" />
+                                ))}
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
             </div>
         );
     }
