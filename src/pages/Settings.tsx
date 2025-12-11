@@ -344,15 +344,38 @@ const SettingsPage = () => {
     };
 
     // --- Helper Functions ---
-    const handleSignOutDevice = (sessionId: string) => {
-        // Logic thực tế: Gọi Supabase API để vô hiệu hóa session
-        toast({ title: "Thành công", description: `Thiết bị ID ${sessionId} đã được đăng xuất.` });
+    const handleSignOutDevice = async (sessionId: string) => {
+        try {
+            const { error } = await supabase
+                .from('user_sessions')
+                .delete()
+                .eq('id', sessionId)
+                .eq('user_id', userId);
+
+            if (error) throw error;
+
+            setActiveSessions(activeSessions.filter(s => s.id !== sessionId));
+            toast({ title: "Thành công", description: "Thiết bị đã được đăng xuất." });
+        } catch (error) {
+            toast({ title: "Lỗi", description: "Không thể đăng xuất thiết bị", variant: "destructive" });
+        }
     };
 
     const handleSignOutEverywhere = async () => {
-        await supabase.auth.signOut({ scope: 'global' });
-        navigate('/auth/login');
-        toast({ title: "Thành công", description: "Bạn đã được đăng xuất khỏi tất cả thiết bị." });
+        try {
+            const { error } = await supabase
+                .from('user_sessions')
+                .delete()
+                .eq('user_id', userId);
+
+            if (error) throw error;
+
+            await supabase.auth.signOut({ scope: 'global' });
+            navigate('/auth/login');
+            toast({ title: "Thành công", description: "Bạn đã được đăng xuất khỏi tất cả thiết bị." });
+        } catch (error) {
+            toast({ title: "Lỗi", description: "Không thể đăng xuất", variant: "destructive" });
+        }
     };
     
     // --- Render ---
