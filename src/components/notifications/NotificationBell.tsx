@@ -19,6 +19,60 @@ interface Notification {
  created_at: string;
 }
 
+interface NotificationGroup {
+ label: string;
+ notifications: Notification[];
+}
+
+// Helper to get icon and color based on notification type
+const getNotificationIcon = (type: string) => {
+ switch (type) {
+  case 'task':
+   return <FileText className="h-4 w-4 text-blue-500" />;
+  case 'approval':
+   return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+  case 'meeting':
+   return <Users className="h-4 w-4 text-purple-500" />;
+  case 'alert':
+   return <AlertCircle className="h-4 w-4 text-orange-500" />;
+  case 'reminder':
+   return <Clock className="h-4 w-4 text-yellow-500" />;
+  default:
+   return <Bell className="h-4 w-4 text-gray-500" />;
+ }
+};
+
+// Helper to group notifications by time
+const groupNotificationsByTime = (notifications: Notification[]): NotificationGroup[] => {
+ const today = new Date();
+ const yesterday = new Date(today);
+ yesterday.setDate(yesterday.getDate() - 1);
+
+ const todayStart = startOfDay(today);
+ const yesterdayStart = startOfDay(yesterday);
+
+ const groups: Record<string, Notification[]> = {
+  'Hôm nay': [],
+  'Hôm qua': [],
+  'Trước đó': []
+ };
+
+ notifications.forEach(notif => {
+  const notifDate = new Date(notif.created_at);
+  if (notifDate >= todayStart) {
+   groups['Hôm nay'].push(notif);
+  } else if (notifDate >= yesterdayStart) {
+   groups['Hôm qua'].push(notif);
+  } else {
+   groups['Trước đó'].push(notif);
+  }
+ });
+
+ return Object.entries(groups)
+  .filter(([_, notifs]) => notifs.length > 0)
+  .map(([label, notifs]) => ({ label, notifications: notifs }));
+};
+
 export default function NotificationBell() {
  const [notifications, setNotifications] = useState<Notification[]>([]);
  const [unreadCount, setUnreadCount] = useState(0);
